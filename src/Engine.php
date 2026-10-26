@@ -63,6 +63,9 @@ final class Engine
 
     private readonly ManualOperations $manual;
 
+    /** @var list<\Closure(Event): void> */
+    private array $validators = [];
+
     public function __construct(
         Store $store,
         ?Container $container = null,
@@ -102,6 +105,17 @@ final class Engine
     public static function inMemory(?Clock $clock = null, ?Container $container = null, EngineOptions $options = new EngineOptions, ?FaultInjector $faults = null, ?EventListener $listener = null): self
     {
         return new self(new InMemoryStore, $container, new SyncDispatcher, $clock, $options, $listener, $faults);
+    }
+
+    /**
+     * A check run on every event before it is queued (send, publish,
+     * complete). Throw to refuse the event; the sender gets the exception.
+     *
+     * @param  \Closure(Event): void  $validator
+     */
+    public function addValidator(\Closure $validator): void
+    {
+        $this->validators[] = $validator;
     }
 
     public function setMigrator(Migrator $migrator): void
@@ -207,7 +221,7 @@ final class Engine
      */
     public function send(string $instanceId, object|string $event, array $payload = [], ?string $key = null, ?Actor $by = null): Receipt
     {
-        $e = Event::from($event, $payload);
+        $e = $this->validated($event, $payload);
         if (str_starts_with($e->name, 'manual.')) {
             throw new InvalidArgumentException('Operator actions go through the engine methods, not send()');
         }
@@ -244,7 +258,7 @@ final class Engine
      */
     public function publish(object|string $event, string $correlate, array $payload = [], ?string $key = null, ?Actor $by = null): Receipt
     {
-        $e = Event::from($event, $payload);
+        $e = $this->validated($event, $payload);
         $key ??= 'auto:'.Uuid::v7($this->kernel->now());
         $reached = $this->kernel->tx(fn () => $this->kernel->publish($e->name, $e->payload, $correlate, $key, $by));
 
@@ -583,6 +597,22 @@ final class Engine
     }
 
     // Internals ---------------------------------------------------------------
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function validated(object|string $event, array $payload): Event
+    {
+        if ($event instanceof SelfValidating) {
+            $event->validate();
+        }
+        $e = Event::from($event, $payload);
+        foreach ($this->validators as $validator) {
+            $validator($e);
+        }
+
+        return $e;
+    }
 
     private function view(InstanceRecord $record): InstanceView
     {

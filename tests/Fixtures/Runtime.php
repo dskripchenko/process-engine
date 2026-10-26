@@ -14,6 +14,7 @@ use Dskripchenko\ProcessEngine\Effect\Publish;
 use Dskripchenko\ProcessEngine\Effect\Reconcilable;
 use Dskripchenko\ProcessEngine\Effect\Retry;
 use Dskripchenko\ProcessEngine\Process;
+use Dskripchenko\ProcessEngine\SelfValidating;
 
 use function Dskripchenko\ProcessEngine\eq;
 
@@ -182,5 +183,48 @@ final class Payout extends Process
     {
         $p->state('paying', fn (Builder $s) => $s->invoke(Transfer::class, onDone: 'paid'));
         $p->final('paid');
+    }
+}
+
+final class FormSubmitted implements SelfValidating
+{
+    public function __construct(public array $form = []) {}
+
+    public function validate(): void
+    {
+        if (! isset($this->form['damage'])) {
+            throw new \InvalidArgumentException('damage is required');
+        }
+    }
+}
+
+final class Race extends Process
+{
+    public const VERSION = 1;
+
+    public function define(Builder $p): void
+    {
+        $p->parallel('race', fn (Builder $s) => $s
+            ->region('a', fn (Builder $r) => $r
+                ->state('a1', fn (Builder $s) => $s->invoke(Render::class)->on('a.done', to: 'af'))
+                ->final('af'))
+            ->region('b', fn (Builder $r) => $r
+                ->state('b1', fn (Builder $s) => $s->invoke(Signing::class)->on('b.done', to: 'bf'))
+                ->final('bf'))
+            ->onDone(to: 'won'), join: 'any');
+        $p->final('won');
+    }
+}
+
+final class Batch extends Process
+{
+    public const VERSION = 1;
+
+    public function define(Builder $p): void
+    {
+        $p->on('request', spawn: Signing::class, key: 'id', onScopeExit: 'keep');
+        $p->state('signing', fn (Builder $s) => $s
+            ->invoke(Signing::class, forEach: 'documents', into: 'signatures', onDone: 'done'));
+        $p->final('done', output: 'signatures');
     }
 }
