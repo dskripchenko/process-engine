@@ -1,0 +1,48 @@
+{
+    "name": "dskripchenko/process-engine",
+    "description": "Framework-agnostic engine for long-running processes: hierarchical state machines with context, durable execution across days and weeks, external events and timers, explicit retry semantics for every side effect, versioned definitions, a journal and manual operations.",
+    "type": "library",
+    "license": "MIT",
+    "keywords": ["workflow", "state-machine", "statechart", "process-engine", "durable-execution", "saga", "bpm", "long-running-process"],
+    "homepage": "https://github.com/dskripchenko/process-engine",
+    "authors": [
+        {
+            "name": "Denis Skripchenko",
+            "email": "denskrp90@gmail.com"
+        }
+    ],
+    "require": {
+        "php": "^8.2"
+    },
+    "require-dev": {
+        "laravel/pint": "^1.0",
+        "pestphp/pest": "^3.0 || ^4.0",
+        "phpstan/phpstan": "^2.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Dskripchenko\\ProcessEngine\\": "src/"
+        },
+        "files": [
+            "src/functions.php"
+        ]
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Dskripchenko\\ProcessEngine\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "test": "pest",
+        "analyse": "phpstan analyse --memory-limit=1G",
+        "lint": "pint --test"
+    },
+    "config": {
+        "sort-packages": true,
+        "allow-plugins": {
+            "pestphp/pest-plugin": true
+        }
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}
