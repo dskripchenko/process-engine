@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://unpkg.com/@dskripchenko/flow/schema/graph.schema.json",
+  "title": "@dskripchenko/flow model, version 1",
+  "description": "A process or state machine: nodes, edges and groups. Positions are optional (nodes without one are laid out automatically). Ids are unique across nodes, edges and groups.",
+  "type": "object",
+  "required": ["nodes"],
+  "properties": {
+    "version": { "const": 1, "description": "The model format; 1 when missing." },
+    "nodes": { "type": "array", "items": { "$ref": "#/$defs/node" } },
+    "edges": { "type": "array", "items": { "$ref": "#/$defs/edge" }, "default": [] },
+    "groups": { "type": "array", "items": { "$ref": "#/$defs/group" } },
+    "meta": {
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "direction": { "enum": ["TB", "LR"], "description": "Auto-layout direction; follows the screen shape when missing." }
+      },
+      "additionalProperties": { "$ref": "#/$defs/value" }
+    }
+  },
+  "$defs": {
+    "id": { "type": "string", "minLength": 1 },
+    "point": {
+      "type": "object",
+      "required": ["x", "y"],
+      "properties": { "x": { "type": "number" }, "y": { "type": "number" } },
+      "description": "The node's centre in graph units."
+    },
+    "value": {
+      "description": "Any JSON value.",
+      "type": ["string", "number", "boolean", "null", "array", "object"]
+    },
+    "data": { "type": "object", "additionalProperties": { "$ref": "#/$defs/value" } },
+    "port": {
+      "type": "object",
+      "required": ["id", "side"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "side": { "enum": ["top", "right", "bottom", "left"] },
+        "offset": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.5 },
+        "kind": { "enum": ["in", "out", "both"], "default": "both" },
+        "label": { "type": "string" }
+      }
+    },
+    "node": {
+      "type": "object",
+      "required": ["id"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "type": {
+          "type": "string",
+          "default": "state",
+          "description": "Built in: start, end, state, task, decision, subprocess, note; any other name is a host-registered type."
+        },
+        "label": { "type": "string" },
+        "description": { "type": "string" },
+        "position": { "$ref": "#/$defs/point" },
+        "group": { "$ref": "#/$defs/id" },
+        "data": { "$ref": "#/$defs/data" },
+        "enabled": { "type": "boolean", "default": true },
+        "subgraph": {
+          "description": "An inline graph, or a reference the host resolves (FlowView's `subgraphs` / `loadSubgraph`).",
+          "oneOf": [{ "type": "string" }, { "$ref": "#" }]
+        },
+        "ports": { "type": "array", "items": { "$ref": "#/$defs/port" } }
+      }
+    },
+    "edge": {
+      "type": "object",
+      "required": ["id", "from", "to"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "from": { "$ref": "#/$defs/id" },
+        "to": { "$ref": "#/$defs/id" },
+        "fromPort": { "$ref": "#/$defs/id" },
+        "toPort": { "$ref": "#/$defs/id" },
+        "label": { "type": "string" },
+        "condition": { "type": "string" },
+        "enabled": { "type": "boolean", "default": true },
+        "kind": { "enum": ["transition", "association"], "default": "transition" },
+        "data": { "$ref": "#/$defs/data" }
+      }
+    },
+    "group": {
+      "type": "object",
+      "required": ["id"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "label": { "type": "string" },
+        "parent": { "$ref": "#/$defs/id" }
+      }
+    }
+  }
+}

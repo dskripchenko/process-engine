@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://unpkg.com/@dskripchenko/flow/schema/snapshot.schema.json",
+  "title": "@dskripchenko/flow monitoring snapshot",
+  "description": "What a monitoring endpoint returns for the graph on screen. Every field is optional; ids refer to the graph's nodes and edges.",
+  "type": "object",
+  "properties": {
+    "nodes": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "description": "active, done, error, waiting, skipped, or a host status (drawn neutral unless mapped by statusTones)." },
+          "count": { "type": "number", "description": "Instances in or through the node." },
+          "badge": { "type": ["string", "number"], "description": "A short corner badge, e.g. an error count." },
+          "message": { "type": "string", "description": "Shown in the details panel." },
+          "updatedAt": { "type": ["string", "number"], "description": "ISO 8601 or epoch milliseconds." }
+        }
+      }
+    },
+    "edges": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "count": { "type": "number" },
+          "traversed": { "type": "boolean" }
+        }
+      }
+    },
+    "path": { "type": "array", "items": { "type": "string" }, "description": "The current instance's node ids in visiting order." },
+    "current": { "type": "array", "items": { "type": "string" }, "description": "Nodes the current instance is in now." },
+    "updatedAt": { "type": ["string", "number"], "description": "When the host produced the snapshot." }
+  }
+}
