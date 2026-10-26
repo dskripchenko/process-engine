@@ -13,6 +13,11 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   (what `project()` builds and the documentation shows) as well as arrays.
   Hosts that returned `[project(...)]` failed static analysis at level max.
 
+### Added
+
+- `Engine::define(Definition|array)`: store a definition built outside a process class
+  (loaded from JSON, made in a visual editor) after validating it; start it by name.
+
 ## [1.0.0] - 2026-10-26
 
 ### Added

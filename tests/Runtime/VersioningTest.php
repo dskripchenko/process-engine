@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Dskripchenko\ProcessEngine\Definition\Definition;
+use Dskripchenko\ProcessEngine\Definition\DefinitionError;
 use Dskripchenko\ProcessEngine\Runtime\DefinitionVersionConflict;
 use Dskripchenko\ProcessEngine\Testing\ProcessTest;
 use Dskripchenko\ProcessEngine\Tests\Fixtures\Runtime;
@@ -112,3 +113,35 @@ it('finds live versions whose code is gone', function () {
 
     expect(implode("\n", $problems))->toContain('App\\Gone\\Effect')->toContain('removedGuard');
 });
+
+it('defines a process from data, as a visual editor would, and runs it by name', function () {
+    $t = new ProcessTest;
+    $data = [
+        'format' => 1, 'name' => 'edited', 'version' => 1,
+        'root' => ['id' => '#root', 'type' => 'compound', 'states' => [
+            ['id' => 'open', 'on' => [['event' => 'close', 'target' => 'closed', 'guard' => ['type' => 'predicate', 'expr' => ['eq' => ['$.event.ok', true]]]]]],
+            ['id' => 'closed', 'type' => 'final'],
+        ]],
+    ];
+
+    $record = $t->engine->define($data);
+    expect($t->engine->define($data)->id)->toBe($record->id);   // the same graph again: a no-op
+
+    $id = $t->engine->start('edited')->id();
+    $t->engine->send($id, 'close', ['ok' => false]);
+    $t->drain();
+    expect($t->engine->get($id)->active())->toBe(['open']);
+
+    $t->engine->send($id, 'close', ['ok' => true]);
+    $t->drain();
+    expect($t->engine->get($id)->final())->toBe('closed');
+});
+
+it('refuses an invalid definition with every problem named', function () {
+    (new ProcessTest)->engine->define([
+        'format' => 1, 'name' => 'broken', 'version' => 1,
+        'root' => ['id' => '#root', 'type' => 'compound', 'states' => [
+            ['id' => 'a', 'on' => [['event' => 'go', 'target' => 'nowhere']]],
+        ]],
+    ]);
+})->throws(DefinitionError::class, 'Invalid definition');
