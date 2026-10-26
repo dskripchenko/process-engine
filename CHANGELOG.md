@@ -5,6 +5,14 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+
+## [Unreleased]
+
+### Fixed
+- `Process::projections()` is annotated as returning `Projection` objects
+  (what `project()` builds and the documentation shows) as well as arrays.
+  Hosts that returned `[project(...)]` failed static analysis at level max.
+
 ## [1.0.0] - 2026-10-26
 
 ### Added

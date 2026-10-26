@@ -25,7 +25,7 @@ abstract class Process
     /**
      * Mirrors of the current state into columns of host models, see `project()`.
      *
-     * @return list<array<string, mixed>>
+     * @return list<\Dskripchenko\ProcessEngine\Builder\Projection|array<string, mixed>>
      */
     public function projections(): array
     {
