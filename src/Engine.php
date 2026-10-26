@@ -153,7 +153,12 @@ final class Engine
         ?string $subjectType = null,
         string|int|null $subjectId = null,
         ?int $version = null,
+        ?ProcessSubject $subject = null,
     ): InstanceView {
+        if ($subject !== null) {
+            $subjectType = $subject->processSubjectType();
+            $subjectId = $subject->processSubjectId();
+        }
         $record = $this->definitionRecord($process, $version);
         if ($key !== null) {
             $existing = $this->kernel->store->findInstanceByKey($record->name, $key);
@@ -204,7 +209,12 @@ final class Engine
         ?string $subjectType = null,
         string|int|null $subjectId = null,
         ?int $version = null,
+        ?ProcessSubject $subject = null,
     ): InstanceView {
+        if ($subject !== null) {
+            $subjectType = $subject->processSubjectType();
+            $subjectId = $subject->processSubjectId();
+        }
         $record = $this->definitionRecord($process, $version);
         if ($key !== null && ($existing = $this->kernel->store->findInstanceByKey($record->name, $key)) !== null) {
             return $this->view($existing);
