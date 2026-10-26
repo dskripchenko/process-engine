@@ -1,0 +1,11 @@
+/vendor/
+/node_modules/
+/.phpunit.cache/
+/.idea/
+/.vscode/
+.DS_Store
+composer.lock
+.php-cs-fixer.cache
+
+# Local-only working material (third-party sources); never committed
+/docs/internal/private/
