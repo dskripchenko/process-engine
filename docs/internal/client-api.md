@@ -149,15 +149,17 @@ final class ClaimSettlement extends Process
                 ->on('client.signed', to: 'review')));
 
         $p->state('review', fn (Builder $s) => $s
-            ->correlate([PartyDecision::class, DocumentsRequested::class], by: 'externalId')
             ->state('submitting', fn (Builder $s) => $s
-                ->invoke(SubmitToInsurer::class, into: 'externalId', onDone: 'awaitingParty')
-                ->defer(PartyDecision::class))
+                ->invoke(SubmitToInsurer::class, into: 'externalId', onDone: 'awaitingParty'))
             ->state('awaitingParty', fn (Builder $s) => $s
+                // The insurer's number is known only after submitting: subscribe here.
+                // A decision published earlier waits in the buffer until this state is entered.
+                ->correlate([PartyDecision::class, DocumentsRequested::class], by: 'externalId')
                 ->on(DocumentsRequested::class, to: 'awaitingDocuments', run: $this->countRequest(...))
                 ->on(PartyDecision::class, to: 'approved', when: $this->isApproved(...))
                 ->on(PartyDecision::class, to: 'rejected', run: $this->storeRejection(...)))
             ->state('awaitingDocuments', fn (Builder $s) => $s
+                ->defer(PartyDecision::class)       // a decision sent directly waits for awaitingParty
                 ->on('client.documents-uploaded', to: 'awaitingParty', run: SendDocuments::class)
                 ->after('10 days', to: 'awaitingParty', run: ReportMissingDocuments::class))
             ->final('approved')
