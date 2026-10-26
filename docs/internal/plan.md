@@ -10,7 +10,7 @@
 | 1a, 1b, 2, 3, 4, 5, 6, 8 | готово | process-engine, ~210 тестов (из них около 100 — харнесс падений), phpstan L8 |
 | 7 | готово | ~/www/forge/laravel-process-engine, 48 тестов на SQLite и MariaDB, включая fork-гонки и SIGKILL; PostgreSQL — в CI-матрице |
 | 9 | готово | README/CHANGELOG (en), docs/{en,de,ru,zh} обоих пакетов |
-| 10 | позже | интеграция в laravel-admin |
+| 10 | готово | пакет `dskripchenko/laravel-admin-process` (~/www/forge/laravel-admin-process): 27 тестов, phpstan, проверка в чистом Laravel 13 по HTTP |
 
 Отклонения от ADR, принятые по ходу:
 - `join: {quorum: n}` и `onOrphan: compensate` (ADR-009 §1, ADR-006 §8) в v1 не
@@ -65,9 +65,9 @@
 
 | Пакет | Что | Нужно к этапу | Блокирует? |
 |---|---|---|---|
-| `@dskripchenko/flow` | встроенные типы узлов `parallel`, `timer`/`wait`; тона `unknown`, `compensated`; (опц.) рёбра от рамки подпроцесса — **во flow 1.1, после этапа 6** (решение автора) | после 6 | нет — обходится реестром/`statusTones` у хоста |
+| `@dskripchenko/flow` | встроенные типы узлов `parallel`, `timer`/`wait`; тона `unknown`, `compensated`; (опц.) рёбра от рамки подпроцесса — **во flow 1.1, после этапа 6** (решение автора). Сделано другой сессией: PR dskripchenko/flow#3 (1.1.0): типы `parallel` (`join`), `timer`, `wait`, `any`, `edge.trigger`, статусы `unknown`/`compensated`. Ждёт мержа и публикации автором; затем перевести `FlowExporter` на новые типы | после 6 | нет — обходится реестром/`statusTones` у хоста |
 | `laravel-delayed-process` | ничего (мост — на стороне движка) | 7 | нет |
-| `core` (laravel-admin) | ничего на этапах 1–9; к этапу 10 — посмотреть, хватает ли `Layout::flow` actions/instance для ручных операций | 10 | нет |
+| `core` (laravel-admin) | ничего на этапах 1–9; к этапу 10 — посмотреть, хватает ли `Layout::flow` actions/instance для ручных операций. Хватило: правок в core не понадобилось (поля модалки в кнопках drawer не передаются — перевод из схемы идёт с фиксированной причиной и подтверждением) | 10 | нет |
 
 ## Git и публикация
 
