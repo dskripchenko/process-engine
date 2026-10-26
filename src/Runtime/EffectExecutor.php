@@ -56,6 +56,10 @@ final class EffectExecutor
         if ($effect->status !== EffectRecord::PENDING) {
             return;
         }
+        // A suspended instance starts nothing; the tick rings the effect again after resume.
+        if ($this->k->store->findInstance($effect->instanceId)?->status === Snapshot::SUSPENDED) {
+            return;
+        }
 
         $retry = Retry::fromArray($effect->retry);
         $now = $this->k->now();

@@ -249,3 +249,15 @@ it('adopts an instance straight into a state', function () {
     $t->drain();
     expect($t->engine->get($view->id())->final())->toBe('approved');
 });
+
+it('does not start effects of a suspended instance until it resumes', function () {
+    $t = (new ProcessTest)->begin(Runtime\Order::class);
+    $t->engine->suspend($t->id(), $t->operator(), 'hold');
+    $t->drain();
+    $t->engine->operate($t->id(), 'transition', ['states' => ['rendering']], $t->operator(), 'force while suspended');
+    $t->drain()->travel('5 minutes', '1 minute');
+    expect($t->effect(Runtime\Render::class)->status)->toBe(EffectRecord::PENDING);
+
+    $t->engine->resume($t->id(), $t->operator(), 'go');
+    $t->drain()->travel('2 minutes', '1 minute')->assertNotIn('rendering');
+});
