@@ -24,6 +24,15 @@ use Throwable;
  */
 final class InstanceRunner
 {
+    /**
+     * Instances this process is stepping right now. A synchronous queue can
+     * call back into run() from inside a step's doorbell; the outer run keeps
+     * draining the inbox, so the nested call just returns.
+     *
+     * @var array<string, true>
+     */
+    private array $running = [];
+
     public function __construct(
         private readonly Kernel $k,
         private readonly Steps $steps,
@@ -35,10 +44,14 @@ final class InstanceRunner
      */
     public function run(string $instanceId): bool
     {
+        if (isset($this->running[$instanceId])) {
+            return true;
+        }
         $now = $this->k->now();
         if (! $this->k->store->acquireLease($instanceId, $this->k->worker, Duration::add($now, $this->k->options->leaseTtl), $now)) {
             return false;
         }
+        $this->running[$instanceId] = true;
         try {
             for ($i = 0; $i < $this->k->options->eventsPerRun; $i++) {
                 $inbox = $this->next($instanceId);
@@ -52,12 +65,16 @@ final class InstanceRunner
             }
         } catch (SimulatedCrash $crash) {
             // A killed worker keeps its lease until it expires.
+            unset($this->running[$instanceId]);
+
             throw $crash;
         } catch (Throwable $e) {
+            unset($this->running[$instanceId]);
             $this->k->store->releaseLease($instanceId, $this->k->worker);
 
             throw $e;
         }
+        unset($this->running[$instanceId]);
         $this->k->store->releaseLease($instanceId, $this->k->worker);
         if ($this->k->store->nextInbox($instanceId) !== null && $this->k->store->findInstance($instanceId)?->status !== Snapshot::SUSPENDED) {
             $this->k->ringInstance($instanceId);
