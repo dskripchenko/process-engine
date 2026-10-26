@@ -153,11 +153,10 @@ final class Engine
         ?string $subjectType = null,
         string|int|null $subjectId = null,
         ?int $version = null,
-        ?ProcessSubject $subject = null,
+        ?object $subject = null,
     ): InstanceView {
         if ($subject !== null) {
-            $subjectType = $subject->processSubjectType();
-            $subjectId = $subject->processSubjectId();
+            [$subjectType, $subjectId] = self::subject($subject);
         }
         $record = $this->definitionRecord($process, $version);
         if ($key !== null) {
@@ -209,11 +208,10 @@ final class Engine
         ?string $subjectType = null,
         string|int|null $subjectId = null,
         ?int $version = null,
-        ?ProcessSubject $subject = null,
+        ?object $subject = null,
     ): InstanceView {
         if ($subject !== null) {
-            $subjectType = $subject->processSubjectType();
-            $subjectId = $subject->processSubjectId();
+            [$subjectType, $subjectId] = self::subject($subject);
         }
         $record = $this->definitionRecord($process, $version);
         if ($key !== null && ($existing = $this->kernel->store->findInstanceByKey($record->name, $key)) !== null) {
@@ -703,6 +701,24 @@ final class Engine
     }
 
     // Internals ---------------------------------------------------------------
+
+    /**
+     * A ProcessSubject, or any object with the same two methods (the Laravel
+     * HasProcesses trait adds them to a model).
+     *
+     * @return array{0: string, 1: string}
+     */
+    private static function subject(object $subject): array
+    {
+        if ($subject instanceof ProcessSubject) {
+            return [$subject->processSubjectType(), $subject->processSubjectId()];
+        }
+        if (method_exists($subject, 'processSubjectType') && method_exists($subject, 'processSubjectId')) {
+            return [(string) $subject->processSubjectType(), (string) $subject->processSubjectId()];
+        }
+
+        throw new InvalidArgumentException(get_debug_type($subject).' cannot be a process subject: implement '.ProcessSubject::class);
+    }
 
     /**
      * @param  array<string, mixed>  $payload
