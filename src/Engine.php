@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Dskripchenko\ProcessEngine;
 
 use DateTimeInterface;
+use Dskripchenko\ProcessEngine\Definition\Validator;
 use Dskripchenko\ProcessEngine\Interpreter\BusinessCalendar;
 use Dskripchenko\ProcessEngine\Interpreter\FlagProvider;
 use Dskripchenko\ProcessEngine\Interpreter\Interpreter;
@@ -42,6 +43,9 @@ use Dskripchenko\ProcessEngine\Store\TimerRecord;
 use Dskripchenko\ProcessEngine\Support\Duration;
 use Dskripchenko\ProcessEngine\Support\Hydrator;
 use Dskripchenko\ProcessEngine\Support\Uuid;
+use Dskripchenko\ProcessEngine\Versioning\Migration;
+use Dskripchenko\ProcessEngine\Versioning\MigrationReport;
+use Dskripchenko\ProcessEngine\Versioning\Migrations;
 use InvalidArgumentException;
 
 /**
@@ -62,6 +66,8 @@ final class Engine
     private readonly Ticker $ticker;
 
     private readonly ManualOperations $manual;
+
+    private readonly Migrations $migrations;
 
     /** @var list<\Closure(Event): void> */
     private array $validators = [];
@@ -97,6 +103,8 @@ final class Engine
         $this->manual = new ManualOperations($this->kernel, $this->steps, $this->executor);
         $this->runner = new InstanceRunner($this->kernel, $this->steps, $this->manual);
         $this->ticker = new Ticker($this->kernel, $this->executor);
+        $this->migrations = new Migrations($this->kernel, $this->steps);
+        $this->manual->setMigrator($this->migrations);
     }
 
     /**
@@ -497,6 +505,81 @@ final class Engine
         $this->kernel->tx(fn () => $this->kernel->deliver($instanceId, 'manual.'.$operation, $params + ['reason' => $reason], $key, $by));
 
         return new Receipt(Receipt::ACCEPTED, [$instanceId]);
+    }
+
+    // Versions ----------------------------------------------------------------
+
+    public function registerMigration(Migration $migration): void
+    {
+        $this->migrations->register($migration);
+    }
+
+    /**
+     * Check (dry run, the default) or apply a migration to the instances of
+     * its source version. Applying queues one `manual.migrate` per eligible
+     * instance; each runs under the instance lease.
+     */
+    public function migrate(string|Migration $migration, Actor $by, string $reason, bool $dryRun = true, int $limit = 1000): MigrationReport
+    {
+        if ($migration instanceof Migration) {
+            $this->migrations->register($migration);
+        } else {
+            $migration = $this->migrations->get($migration);
+        }
+        $eligible = [];
+        $skipped = [];
+        $records = $this->kernel->store->queryInstances(new InstanceQuery(
+            statuses: [Snapshot::RUNNING, Snapshot::SUSPENDED],
+            definitionName: $migration->process,
+            definitionVersion: $migration->source,
+            limit: $limit,
+        ));
+        foreach ($records as $record) {
+            $problem = $this->migrations->check($record, $migration);
+            if ($problem !== null) {
+                $skipped[$record->id] = $problem;
+
+                continue;
+            }
+            $eligible[] = $record->id;
+            if (! $dryRun) {
+                $this->operate($record->id, 'migrate', ['migration' => $migration->name()], $by, $reason);
+            }
+        }
+
+        return new MigrationReport($migration->name(), $dryRun, $eligible, $skipped);
+    }
+
+    /**
+     * Problems that would break live instances: stored versions with running
+     * instances whose methods, effect or child classes are gone from the code.
+     *
+     * @return list<array{process: string, version: int, instances: int, problem: string}>
+     */
+    public function doctor(): array
+    {
+        $problems = [];
+        foreach ($this->kernel->store->definitions() as $record) {
+            $count = $this->kernel->store->countInstances(new InstanceQuery(statuses: [Snapshot::RUNNING, Snapshot::SUSPENDED], definitionName: $record->name, definitionVersion: $record->version));
+            if ($count === 0) {
+                continue;
+            }
+            foreach (Validator::validate($record->schema) as $issue) {
+                if ($issue->isError()) {
+                    $problems[] = ['process' => $record->name, 'version' => $record->version, 'instances' => $count, 'problem' => (string) $issue];
+                }
+            }
+        }
+
+        return $problems;
+    }
+
+    /**
+     * @return list<DefinitionRecord>
+     */
+    public function definitions(?string $process = null): array
+    {
+        return $this->kernel->store->definitions($process);
     }
 
     // Driving the runtime -----------------------------------------------------

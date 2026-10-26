@@ -6,6 +6,7 @@ namespace Dskripchenko\ProcessEngine\Tests\Fixtures\Runtime;
 
 use Dskripchenko\ProcessEngine\Attributes\AtMostOnce;
 use Dskripchenko\ProcessEngine\Attributes\Idempotent;
+use Dskripchenko\ProcessEngine\Attributes\ProcessName;
 use Dskripchenko\ProcessEngine\Builder\Builder;
 use Dskripchenko\ProcessEngine\Effect\Compensable;
 use Dskripchenko\ProcessEngine\Effect\Effect;
@@ -226,5 +227,44 @@ final class Batch extends Process
         $p->state('signing', fn (Builder $s) => $s
             ->invoke(Signing::class, forEach: 'documents', into: 'signatures', onDone: 'done'));
         $p->final('done', output: 'signatures');
+    }
+}
+
+#[ProcessName('versioned')]
+final class VersionedV1 extends Process
+{
+    public const VERSION = 1;
+
+    public function define(Builder $p): void
+    {
+        $p->state('waiting', fn (Builder $s) => $s->on('go', to: 'done')->after('2 days', to: 'late'));
+        $p->final('done');
+        $p->final('late');
+    }
+}
+
+#[ProcessName('versioned')]
+final class VersionedV2 extends Process
+{
+    public const VERSION = 2;
+
+    public function define(Builder $p): void
+    {
+        $p->state('awaiting', fn (Builder $s) => $s->on('go', to: 'checking')->after('5 days', to: 'late'));
+        $p->state('checking', fn (Builder $s) => $s->on('ok', to: 'done'));
+        $p->final('done');
+        $p->final('late');
+    }
+}
+
+#[ProcessName('versioned')]
+final class VersionedV1Changed extends Process
+{
+    public const VERSION = 1;
+
+    public function define(Builder $p): void
+    {
+        $p->state('waiting', fn (Builder $s) => $s->on('go', to: 'done'));
+        $p->final('done');
     }
 }

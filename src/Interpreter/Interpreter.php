@@ -52,10 +52,11 @@ final class Interpreter
      *
      * @param  list<string>  $states
      * @param  array<string, mixed>  $context
+     * @param  array<string, int>  $activations  counters to continue from (a migration keeps keys unique)
      */
-    public function adopt(Definition $definition, array $states, array $context, ?string $contextClass, StepContext $ctx): StepResult
+    public function adopt(Definition $definition, array $states, array $context, ?string $contextClass, StepContext $ctx, array $activations = []): StepResult
     {
-        $run = new Run($this, $definition, new Snapshot(context: $context, contextClass: $contextClass), $ctx);
+        $run = new Run($this, $definition, new Snapshot(context: $context, contextClass: $contextClass, activations: $activations), $ctx);
         $run->runEntryActions = false;
         $run->enterRoot(enterInitial: false);
         $run->enterTargets($states, $definition->root);
