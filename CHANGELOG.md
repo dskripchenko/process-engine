@@ -5,7 +5,7 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.0.0] - 2026-10-26
 
 ### Added
 - Process definitions as PHP classes (`Process`, `Builder`) compiled into a
@@ -38,3 +38,5 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   to Mermaid.
 - `ProcessTest` harness: virtual clock, fake effects, fault injection at named
   points, assertions.
+
+[1.0.0]: https://github.com/dskripchenko/process-engine/releases/tag/v1.0.0
