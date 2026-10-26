@@ -17,6 +17,7 @@ use Dskripchenko\ProcessEngine\Runtime\Clock;
 use Dskripchenko\ProcessEngine\Runtime\Container;
 use Dskripchenko\ProcessEngine\Runtime\Definitions;
 use Dskripchenko\ProcessEngine\Runtime\Dispatcher;
+use Dskripchenko\ProcessEngine\Runtime\DuplicateStart;
 use Dskripchenko\ProcessEngine\Runtime\EffectExecutor;
 use Dskripchenko\ProcessEngine\Runtime\EngineOptions;
 use Dskripchenko\ProcessEngine\Runtime\EventListener;
@@ -26,6 +27,7 @@ use Dskripchenko\ProcessEngine\Runtime\InstanceRunner;
 use Dskripchenko\ProcessEngine\Runtime\Kernel;
 use Dskripchenko\ProcessEngine\Runtime\ManualOperations;
 use Dskripchenko\ProcessEngine\Runtime\Migrator;
+use Dskripchenko\ProcessEngine\Runtime\Projector;
 use Dskripchenko\ProcessEngine\Runtime\Receipt;
 use Dskripchenko\ProcessEngine\Runtime\SimpleContainer;
 use Dskripchenko\ProcessEngine\Runtime\Steps;
@@ -84,6 +86,7 @@ final class Engine
         BusinessCalendar $calendar = new WeekdayCalendar,
         bool $allowRedefineUnused = false,
         ?string $worker = null,
+        ?Projector $projector = null,
     ) {
         $clock ??= new SystemClock;
         $this->kernel = new Kernel(
@@ -97,6 +100,7 @@ final class Engine
             options: $options,
             listener: $listener,
             worker: $worker,
+            projector: $projector,
         );
         $this->steps = new Steps($this->kernel);
         $this->executor = new EffectExecutor($this->kernel);
@@ -159,15 +163,24 @@ final class Engine
         }
         [$data, $class] = self::contextData($context);
 
-        $instance = $this->kernel->tx(fn () => $this->steps->create(
-            record: $record,
-            context: $data,
-            contextClass: $class,
-            businessKey: $key,
-            subjectType: $subjectType,
-            subjectId: $subjectId !== null ? (string) $subjectId : null,
-            actor: $by,
-        ));
+        try {
+            $instance = $this->kernel->tx(fn () => $this->steps->create(
+                record: $record,
+                context: $data,
+                contextClass: $class,
+                businessKey: $key,
+                subjectType: $subjectType,
+                subjectId: $subjectId !== null ? (string) $subjectId : null,
+                actor: $by,
+            ));
+        } catch (DuplicateStart $e) {
+            $existing = $key !== null ? $this->kernel->store->findInstanceByKey($record->name, $key) : null;
+            if ($existing === null) {
+                throw $e;
+            }
+
+            return $this->view($existing);
+        }
 
         return $this->get($instance->id);
     }

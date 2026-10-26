@@ -49,6 +49,9 @@ interface Store
 
     // Instances ---------------------------------------------------------------
 
+    /**
+     * False when the id, or the business key within the process, is taken.
+     */
     public function insertInstance(InstanceRecord $record): bool;
 
     public function findInstance(string $id): ?InstanceRecord;
@@ -220,7 +223,10 @@ interface Store
 
     // Journal -----------------------------------------------------------------
 
-    /** Assigns the per-instance `seq`. */
+    /**
+     * Assigns `seq`: increasing within the instance (a global sequence is fine),
+     * so `journal($id, $afterSeq)` pages in order.
+     */
     public function appendJournal(JournalRecord $record): void;
 
     /**

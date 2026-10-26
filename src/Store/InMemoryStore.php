@@ -137,6 +137,9 @@ final class InMemoryStore implements Store
         if (isset($this->instances[$record->id])) {
             return false;
         }
+        if ($record->businessKey !== null && $this->findInstanceByKey($record->definitionName, $record->businessKey) !== null) {
+            return false;
+        }
         $this->instances[$record->id] = clone $record;
 
         return true;

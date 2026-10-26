@@ -46,6 +46,7 @@ final class Kernel
         public readonly EngineOptions $options,
         public readonly ?EventListener $listener = null,
         ?string $worker = null,
+        public readonly ?Projector $projector = null,
     ) {
         $this->worker = $worker ?? gethostname().':'.getmypid().':'.bin2hex(random_bytes(4));
     }

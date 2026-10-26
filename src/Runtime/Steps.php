@@ -84,7 +84,10 @@ final class Steps
             updatedAt: $this->k->now(),
             completedAt: $result->snapshot->isFinished() ? $this->k->now() : null,
         );
-        $this->k->store->insertInstance($instance);
+        if (! $this->k->store->insertInstance($instance)) {
+            throw new DuplicateStart("An instance of {$record->name} with key {$businessKey} already exists");
+        }
+        $this->k->projector?->project($instance, $definition);
         $this->k->journal($id, $adoptStates !== null ? 'adopted' : 'started', [
             'definition' => $record->name,
             'version' => $record->version,
@@ -118,6 +121,7 @@ final class Steps
         if (! $this->k->store->updateInstance($instance, $expected)) {
             throw new ConcurrencyConflict("Instance {$instance->id} moved past seq {$expected}");
         }
+        $this->k->projector?->project($instance, $definition);
         $this->journalStep($instance, $result, $event, $actor, $contextBefore, $reason);
         $this->apply($instance, $definition, $result->commands);
         $this->k->signal('step.committed', $instance->id, ['event' => $event?->name, 'active' => $result->snapshot->active]);
