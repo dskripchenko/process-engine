@@ -27,6 +27,7 @@ final class Snapshot
      * @param  array<string, list<string>>  $history  history state id → remembered states
      * @param  array<string, array<string, mixed>>  $invocations  forEach key → {total, outputs}
      * @param  array<string, string>  $entered  state id → entry time (ISO 8601)
+     * @param  array<string, mixed>  $flags  runtime markers (a cancellation waiting for compensation)
      */
     public function __construct(
         public array $active = [],
@@ -39,6 +40,7 @@ final class Snapshot
         public string $status = self::RUNNING,
         public ?string $final = null,
         public mixed $output = null,
+        public array $flags = [],
     ) {}
 
     public function isActive(string $state): bool
@@ -72,6 +74,7 @@ final class Snapshot
             'status' => $this->status,
             'final' => $this->final,
             'output' => $this->output,
+            'flags' => $this->flags,
         ];
     }
 
@@ -91,6 +94,7 @@ final class Snapshot
             status: (string) ($data['status'] ?? self::RUNNING),
             final: isset($data['final']) ? (string) $data['final'] : null,
             output: $data['output'] ?? null,
+            flags: (array) ($data['flags'] ?? []),
         );
     }
 }

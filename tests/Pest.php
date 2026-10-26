@@ -9,6 +9,8 @@ use Dskripchenko\ProcessEngine\Interpreter\StepContext;
 
 require_once __DIR__.'/Fixtures/Approval.php';
 require_once __DIR__.'/Fixtures/Processes.php';
+require_once __DIR__.'/Fixtures/Runtime.php';
+require_once __DIR__.'/Helpers.php';
 
 function definition(string $class): Definition
 {

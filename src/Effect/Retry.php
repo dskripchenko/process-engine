@@ -57,6 +57,12 @@ final class Retry
         return new self(attempts: 10, initialInterval: '1 minute', maxInterval: '6 hours', onExhausted: self::ON_EXHAUSTED_INCIDENT);
     }
 
+    /** Compensations are retried for long, then wait for an operator. */
+    public static function compensationDefault(): self
+    {
+        return new self(attempts: 20, initialInterval: '10 seconds', maxInterval: '1 hour', onExhausted: self::ON_EXHAUSTED_INCIDENT);
+    }
+
     public static function forever(): self
     {
         return new self(attempts: PHP_INT_MAX, initialInterval: '10 seconds', maxInterval: '1 hour', onExhausted: self::ON_EXHAUSTED_INCIDENT);
