@@ -268,3 +268,27 @@ final class VersionedV1Changed extends Process
         $p->final('done');
     }
 }
+
+final class Agreement extends Process
+{
+    public const VERSION = 1;
+
+    public function define(Builder $p): void
+    {
+        $p->state('offer', fn (Builder $s) => $s
+            ->meta(label: 'Sign the agreement')
+            ->on('client.agreed', to: 'signed', label: 'Sign')
+            ->on('client.declined', to: 'declined', label: 'Decline')
+            ->on('boom', to: 'signed', run: $this->explode(...))
+            ->after('2 days', to: 'declined'));
+        $p->final('signed', meta: ['label' => 'Signed']);
+        $p->final('declined');
+    }
+
+    private function explode(array $context): void
+    {
+        if (! ($context['fixed'] ?? false)) {
+            throw new \RuntimeException('bug in a guard');
+        }
+    }
+}
