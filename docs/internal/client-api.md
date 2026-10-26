@@ -371,6 +371,59 @@ $view->label();     // 'Подпишите соглашение'
 $view->expects();   // [['event' => 'client.agreed', 'label' => 'Подписать'], …]
 ```
 
+## 2б. Типизированные состояния и привязка к модели
+
+```php
+// Enum cases as state ids: IDE completion, typos caught in the editor.
+enum ClaimState: string
+{
+    case Filling = 'filling';
+    case Review = 'review';
+    case Approved = 'approved';
+    case Cancelled = 'cancelled';
+}
+
+final class ClaimSettlement extends Process
+{
+    public const VERSION = 1;
+    public const STATES = ClaimState::class;      // optional: the builder checks the enum and the graph match
+
+    public function define(Builder $p): void
+    {
+        $p->on('client.cancelled', to: ClaimState::Cancelled, from: '*');   // from any unfinished state
+        $p->state(ClaimState::Filling, fn (Builder $s) => $s
+            ->on(FormSubmitted::class, to: ClaimState::Review));
+        // …
+    }
+}
+
+// Mirror the state into a column of the host model, in the same transaction as the step.
+public function projections(): array
+{
+    return [project(Claim::class, 'status', using: ClaimStatus::class, map: [
+        ClaimState::Filling->value => ClaimStatus::Draft,
+        ClaimState::Review->value  => ClaimStatus::InReview,
+    ])];
+}
+```
+
+```php
+// The host model.
+final class Claim extends Model
+{
+    use HasProcesses;
+}
+
+Processes::start(ClaimSettlement::class, new ClaimContext(policyId: $policy->id), subject: $claim);
+
+Claim::whereProcessIn('awaitingDocuments')->paginate();     // indexed, via pe_active_states
+$claim->process(ClaimSettlement::class)->expects();         // guards on the context already evaluated
+```
+
+Консоль: `php artisan make:process ClaimSettlement`,
+`php artisan make:process-effect PayOut --at-most-once`,
+`php artisan process-engine:graph ClaimSettlement --format=mermaid`.
+
 ## 3. Вызовы из приложения (Laravel)
 
 ```php

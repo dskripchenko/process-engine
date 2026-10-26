@@ -31,7 +31,8 @@
 | Таблица | Ключевые поля | Назначение |
 |---|---|---|
 | `pe_definitions` | `id`, `name`, `version`, `hash`, `schema` (JSON), `created_at` | неизменяемые снапшоты определений (ADR-008); уникально `(name, version)` |
-| `pe_instances` | `id` (uuid7), `definition_id`, `status`, `configuration` (JSON: активные состояния), `context` (JSON), `history` (JSON: память history-узлов), `activations` (JSON: счётчики входов), `seq`, `parent_id`, `parent_invoke`, `business_key`, `locked_by`, `lease_until`, `has_incidents`, `created_at`, `updated_at`, `completed_at` | снапшот |
+| `pe_instances` | `id` (uuid7), `definition_id`, `status`, `configuration` (JSON: активные состояния), `context` (JSON), `history` (JSON: память history-узлов), `activations` (JSON: счётчики входов), `seq`, `parent_id`, `parent_invoke`, `business_key`, `subject_type`, `subject_id` (сущность хоста, к которой привязан процесс; Laravel — morph), `locked_by`, `lease_until`, `has_incidents`, `created_at`, `updated_at`, `completed_at` | снапшот |
+| `pe_active_states` | `instance_id`, `definition_name`, `state` (полный путь), `entered_at` | активные состояния (атомарные и предки) плоскими строками; переписываются в транзакции шага. Нужны для индексируемых запросов «экземпляры в состоянии X» и scopes моделей хоста: искать по JSON `configuration` при 100 тыс. активных слишком дорого |
 | `pe_inbox` | `id`, `instance_id`, `seq`, `name`, `payload`, `actor`, `idempotency_key`, `status` (`pending/processed/ignored/deferred/expired`), `defer_until`, `received_at`, `processed_at` | входящие события; уникально `(instance_id, idempotency_key)` |
 | `pe_effects` | `id`, `instance_id`, `key` (уникально), `activation`, `handler`, `input`, `semantics`, `retry_policy`, `status`, `attempt`, `next_attempt_at`, `locked_by`, `lease_until`, `started_at`, `finished_at`, `result`, `error`, `compensation_of` | outbox эффектов (ADR-006) |
 | `pe_timers` | `id`, `instance_id`, `key` (уникально), `activation`, `event`, `fire_at`, `status` (`pending/fired/cancelled`) | таймеры и дедлайны (ADR-010) |
@@ -41,7 +42,8 @@
 | `pe_journal` | `instance_id`, `seq`, `type`, `event`, `transitions`, `exited`, `entered`, `context_patch` (RFC 6902), `actor`, `reason`, `data`, `at` | журнал (ADR-011) |
 
 Индексы под операции: `instances(status)`, `instances(definition_id, status)`,
-`instances(business_key)`, `instances(lease_until)`; `inbox(status, instance_id, seq)`;
+`instances(business_key)`, `instances(subject_type, subject_id)`, `instances(lease_until)`;
+`active_states(definition_name, state)`, `active_states(instance_id)`; `inbox(status, instance_id, seq)`;
 `effects(status, next_attempt_at)`, `effects(status, lease_until)`;
 `timers(status, fire_at)`; `subscriptions(event, correlation_key)`;
 `incidents(status)`; `journal(instance_id, seq)`.
@@ -86,7 +88,7 @@ inbox/effects/timers. В горячих таблицах 100 тыс. актив�
   `pe_timers`, `pe_subscriptions`, `pe_incidents`, `pe_journal`) содержат
   только активные и недавно завершённые экземпляры.
 - **`pe_archive`** — **одна строка на завершённый экземпляр**: индексируемые
-  колонки (`id`, `definition_id`, `status`, `business_key`, `parent_id`,
+  колонки (`id`, `definition_id`, `status`, `business_key`, `subject_type`, `subject_id`, `parent_id`,
   `started_at`, `completed_at`) и `document` — сжатый (gzip) JSON со
   снапшотом, журналом, эффектами и инцидентами целиком. Это 10 млн строк
   без миллиардных таблиц и без партиционирования.
