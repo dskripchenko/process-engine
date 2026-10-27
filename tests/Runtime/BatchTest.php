@@ -162,3 +162,24 @@ it('rejects a batch handler that is not idempotent', function () {
     };
     expect(fn () => (new ProcessTest)->engine->start($process::class))->toThrow(DefinitionError::class);
 });
+
+it('survives a worker dying anywhere on the way of a chunk', function (string $point, int $skip) {
+    Script::$flaky = ['4' => 1];
+    $t = (new ProcessTest)->crashAt($point, $skip)->begin(Batches\Enrich::class, ['n' => 33]);
+    $t->recover()->recover()->assertFinal('done');
+
+    $batch = batchOf($t);
+    expect(array_filter($t->view()->journal(), fn ($j) => $j->type === 'batch.done'))->toHaveCount(1)
+        ->and(array_values(array_unique(Script::seen())))->toHaveCount(33)
+        ->and($batch->summary())->toMatchArray(['done' => 29, 'not_found' => 4, 'failed' => 0, 'deferred' => 0, 'total' => 33])
+        ->and($t->engine->batchItems($batch->id, 'pending'))->toBe([])
+        ->and($t->engine->batchItems($batch->id, 'queued'))->toBe([])
+        ->and($batch->running)->toBe(0);
+})->with([
+    ['effect.after_claim', 0],
+    ['effect.after_claim', 2],
+    ['batch.after_call', 0],
+    ['batch.after_call', 3],
+    ['batch.after_record', 0],
+    ['batch.after_record', 4],
+]);
