@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [1.2.1] - 2026-10-27
+
+### Fixed
+- The diagram of a switchable state drew its generated skips (`switched off`,
+  `off for this run`) as edges; they are its switch on the node now.
+  Edges between the same two nodes (a stage that goes on after `done` and
+  `error` alike) are drawn as one, the labels joined.
+
 ## [1.2.0] - 2026-10-27
 
 ### Added
