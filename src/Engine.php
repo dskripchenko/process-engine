@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace Dskripchenko\ProcessEngine;
 
 use DateTimeInterface;
+use Dskripchenko\ProcessEngine\Definition\Definition;
+use Dskripchenko\ProcessEngine\Definition\DefinitionError;
+use Dskripchenko\ProcessEngine\Definition\Issue;
 use Dskripchenko\ProcessEngine\Definition\Validator;
 use Dskripchenko\ProcessEngine\Interpreter\BusinessCalendar;
 use Dskripchenko\ProcessEngine\Interpreter\FlagProvider;
@@ -593,6 +596,29 @@ final class Engine
         }
 
         return $problems;
+    }
+
+    /**
+     * Store a definition built outside a process class — loaded from JSON, made
+     * in a visual editor. It is validated first; an error-level issue refuses
+     * it with all issues in the message. Storing the same name and version
+     * again is a no-op when the graph is the same and a conflict otherwise,
+     * exactly as for classes. Start its instances by name: `start($name)`.
+     *
+     * @param  Definition|array<string, mixed>  $definition
+     */
+    public function define(Definition|array $definition): DefinitionRecord
+    {
+        $data = $definition instanceof Definition ? $definition->toArray() : $definition;
+        $errors = array_values(array_filter(Validator::validate($data), static fn (Issue $i): bool => $i->severity === Issue::ERROR));
+        if ($errors !== []) {
+            throw new DefinitionError('Invalid definition: '.implode('; ', array_map(
+                static fn (Issue $i): string => ($i->state !== null ? $i->state.': ' : '').$i->message,
+                $errors,
+            )));
+        }
+
+        return $this->kernel->definitions->register($definition instanceof Definition ? $definition : Definition::fromArray($data));
     }
 
     /**

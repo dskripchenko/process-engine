@@ -24,6 +24,12 @@ An instance is bound to the stored version it started with, and the engine
 executes **the stored form**, not the class. You can rewrite `define()` for
 version 2; instances of version 1 keep running on the version 1 graph.
 
+Definitions made without a class — loaded from JSON, built in a visual
+editor — are stored with `$engine->define($array)`: validated (an error
+refuses it with every problem named), then stored like a class version, with
+the same rule — the same name and version with another graph is a conflict.
+Start them by name.
+
 New instances start on the version the class declares. `start('claim-settlement')`
 by name starts the latest stored version; `start(..., version: 1)` a given one.
 
