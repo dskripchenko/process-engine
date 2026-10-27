@@ -504,6 +504,41 @@ final class Builder
     }
 
     /**
+     * A stage that can be switched off (ADR-015): globally by its switch
+     * (`Engine::switchOff`, an admin toggle), for one run by listing the
+     * switch in the context's `disabled`, or by the engine when an invocation
+     * of the state fails with a code from `offOn`. A switched-off stage is
+     * skipped to `skipTo` before it invokes anything, and the skip is noted in
+     * the context's `skipped` list; switching it off while it runs leaves it
+     * (its batch is cancelled, waiting elements deferred).
+     *
+     * @param  list<string>  $offOn  error codes of the state's invocations that switch it off
+     */
+    public function switchable(string $switch, string|BackedEnum $skipTo, array $offOn = [], ?string $label = null): self
+    {
+        if ($switch === '') {
+            throw new DefinitionError('switchable(): name the switch');
+        }
+        $target = Compiler::id($skipTo);
+        $this->node['always'] ??= [];
+        $note = fn (string $reason): array => [['type' => 'assign', 'set' => ['$.context.skipped' => ['append' => ['state' => $this->id(), 'switch' => $switch, 'reason' => $reason]]]]];
+        array_unshift(
+            $this->node['always'],
+            ['guard' => ['type' => 'predicate', 'expr' => ['in' => [$switch, '$.context.disabled']]], 'actions' => $note('off for this run'), 'target' => $target, 'label' => 'off for this run'],
+            ['guard' => ['type' => 'predicate', 'expr' => ['not' => ['switch' => $switch]]], 'actions' => $note('off'), 'target' => $target, 'label' => 'switched off'],
+        );
+        $this->node['on'][] = [
+            'event' => 'switch.off', 'guard' => ['type' => 'predicate', 'expr' => ['eq' => ['$.event.switch', $switch]]],
+            'actions' => $note('switched off while running'), 'target' => $target, 'label' => 'switched off',
+        ];
+        $this->node['meta'] = array_merge($this->node['meta'] ?? [], [
+            'switch' => ['name' => $switch, 'label' => $label, 'offOn' => array_values($offOn), 'skipTo' => $target],
+        ]);
+
+        return $this;
+    }
+
+    /**
      * Poll a party that cannot call back. The handler (an #[Idempotent]
      * effect) returns null while there is nothing new, or an event (or a list
      * of events, Publish, Send) when there is. `every:` is a duration or a

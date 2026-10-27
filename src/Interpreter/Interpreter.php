@@ -78,6 +78,8 @@ final class Interpreter
             return $run->result(StepResult::DISCARDED, reason: $stale);
         }
 
+        $run->switchOffOn($event);
+
         if (str_starts_with($event->name, 'item.invoke.')) {
             $event = $run->collect($event);
             if ($event === null) {

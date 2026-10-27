@@ -241,6 +241,35 @@ final class Run
     // Microsteps --------------------------------------------------------------
 
     /**
+     * An invocation of a switchable state failed with one of its `offOn`
+     * codes: the switch goes off (ADR-015), whatever transition follows.
+     */
+    public function switchOffOn(Event $event): void
+    {
+        if (! str_starts_with($event->name, 'error.invoke.')) {
+            return;
+        }
+        $invokeId = substr($event->name, strlen('error.invoke.'));
+        $code = (string) ($event->payload['code'] ?? '');
+        foreach ($this->activeNodes() as $node) {
+            $switch = $node->meta['switch'] ?? null;
+            if (! is_array($switch) || ! in_array($code, (array) ($switch['offOn'] ?? []), true)) {
+                continue;
+            }
+            foreach ($node->invoke as $invoke) {
+                if (($invoke['id'] ?? null) === $invokeId) {
+                    $this->commands[] = new Command(Command::SWITCH_OFF, [
+                        'switch' => (string) $switch['name'],
+                        'state' => $node->id,
+                        'reason' => (string) ($event->payload['message'] ?? $code),
+                        'code' => $code,
+                    ]);
+                }
+            }
+        }
+    }
+
+    /**
      * @param  list<Transition>  $transitions
      */
     public function microstep(array $transitions, ?Event $event): void
@@ -702,9 +731,25 @@ final class Run
             ]);
         }
 
+        // A switched-off stage leaves by its eventless transition: it invokes nothing (ADR-015).
+        if ($this->switchedOff($node)) {
+            return;
+        }
         foreach ($node->invoke as $invoke) {
             $this->startInvoke($node, $invoke, $key, $activation);
         }
+    }
+
+    private function switchedOff(StateNode $node): bool
+    {
+        $switch = $node->meta['switch']['name'] ?? null;
+        if (! is_string($switch)) {
+            return false;
+        }
+        $disabled = Expression::read('$.context.disabled', $this->scope(null));
+
+        return (is_array($disabled) && in_array($switch, $disabled, true))
+            || ! Expression::test(['switch' => $switch], $this->scope(null), $this->interpreter->flags());
     }
 
     /**
@@ -856,6 +901,9 @@ final class Run
                 $value = Expression::read((string) $spec['path'], $scope);
             } elseif (isset($spec['inc'])) {
                 $value = (Expression::read((string) $path, ['context' => $context]) ?? 0) + $spec['inc'];
+            } elseif (array_key_exists('append', $spec)) {
+                $list = Expression::read((string) $path, ['context' => $context]);
+                $value = [...(is_array($list) ? array_values($list) : []), $spec['append']];
             } else {
                 continue;
             }

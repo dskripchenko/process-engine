@@ -13,7 +13,9 @@ use Dskripchenko\ProcessEngine\Interpreter\BusinessCalendar;
 use Dskripchenko\ProcessEngine\Interpreter\FlagProvider;
 use Dskripchenko\ProcessEngine\Interpreter\Interpreter;
 use Dskripchenko\ProcessEngine\Interpreter\Snapshot;
+use Dskripchenko\ProcessEngine\Interpreter\StaticFlags;
 use Dskripchenko\ProcessEngine\Interpreter\StepContext;
+use Dskripchenko\ProcessEngine\Interpreter\SwitchProvider;
 use Dskripchenko\ProcessEngine\Interpreter\WeekdayCalendar;
 use Dskripchenko\ProcessEngine\Query\InstanceView;
 use Dskripchenko\ProcessEngine\Runtime\Clock;
@@ -95,6 +97,7 @@ final class Engine
         ?Projector $projector = null,
     ) {
         $clock ??= new SystemClock;
+        $flags ??= new StaticFlags;
         $this->kernel = new Kernel(
             store: $store,
             clock: $clock,
@@ -107,6 +110,7 @@ final class Engine
             listener: $listener,
             worker: $worker,
             projector: $projector,
+            flags: $flags,
         );
         $this->steps = new Steps($this->kernel);
         $this->executor = new EffectExecutor($this->kernel);
@@ -545,6 +549,34 @@ final class Engine
     public function redeliver(string $instanceId, int $inboxId, Actor $by, string $reason): Receipt
     {
         return $this->operate($instanceId, 'redeliver', ['inbox' => $inboxId], $by, $reason);
+    }
+
+    /**
+     * Switch off a stage everywhere (ADR-015): states declared
+     * `switchable($switch, ...)` are skipped from now on, and instances
+     * standing in one leave it.
+     */
+    public function switchOff(string $switch, Actor $by, string $reason): void
+    {
+        if (trim($reason) === '') {
+            throw new InvalidArgumentException('Switching a stage off needs a reason');
+        }
+        $this->kernel->tx(fn () => $this->kernel->setSwitch($switch, false, $by, $reason));
+    }
+
+    public function switchOn(string $switch, Actor $by, ?string $reason = null): void
+    {
+        $this->kernel->tx(fn () => $this->kernel->setSwitch($switch, true, $by, $reason));
+    }
+
+    /**
+     * @return array{on: bool, reason: ?string, by: ?array<string, mixed>, at: ?\DateTimeImmutable}
+     */
+    public function switchState(string $switch): array
+    {
+        $flags = $this->kernel->flags;
+
+        return $flags instanceof SwitchProvider ? $flags->state($switch) : ['on' => true, 'reason' => null, 'by' => null, 'at' => null];
     }
 
     /**

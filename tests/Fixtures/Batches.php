@@ -130,3 +130,18 @@ final class Enrich extends Process
         $p->final('aborted');
     }
 }
+
+/** A pipeline of one switchable source stage. */
+final class Pipeline extends Process
+{
+    public const VERSION = 1;
+
+    public function define(Builder $p): void
+    {
+        $p->state('dadata', fn (Builder $s) => $s
+            ->switchable('enrichment.dadata', skipTo: 'merge', offOn: ['fatal'], label: 'DaData')
+            ->batch(Lookup::class, items: Numbers::class, chunk: 10, onDone: 'merge', onError: ['fatal' => 'merge']));
+        $p->state('merge', fn (Builder $s) => $s->on('finish', to: 'done'));
+        $p->final('done');
+    }
+}

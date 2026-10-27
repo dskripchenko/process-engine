@@ -25,6 +25,9 @@ final class Command
     /** {key, process, input, inputClass?, invoke?, spawn?, activation, item?, index?, onScopeExit} */
     public const START_CHILD = 'start_child';
 
+    /** Switch a switchable state off (ADR-015): its invocation failed with an `offOn` code. */
+    public const SWITCH_OFF = 'switch_off';
+
     /** Start a batch invocation (ADR-014). */
     public const START_BATCH = 'start_batch';
 

@@ -38,34 +38,37 @@ $p->state('dadata', fn (Builder $s) => $s
 2. переход по событию `switch.off` с условием `eq($.event.flag, $flag)` в
    `skipTo` (выключение во время работы этапа): вызовы состояния отменяются
    выходом из него (пакет — `cancelled`, элементы `deferred`, ADR-014);
-3. для каждого кода из `offOn` — действие на переходах `error.invoke.*` этого
-   состояния с этим кодом: команда `SWITCH_OFF {flag, reason: сообщение
-   ошибки}`;
-4. метаданные узла `switch: {flag, label}` — для схемы (переключатель на узле)
-   и для поиска экземпляров в выключаемом состоянии.
+3. метаданные узла `switch: {name, label, offOn, skipTo}` (формат определения
+   не меняется) — для схемы и для поиска экземпляров в выключаемом состоянии;
+4. событие `error.invoke.<id>` вызова этого состояния с кодом из `offOn`
+   даёт команду `SWITCH_OFF {switch, reason: сообщение ошибки}` — независимо
+   от того, какой переход примет событие.
 
-### 2. Флаги
+### 2. Переключатели
 
-`FlagProvider` остаётся интерфейсом чтения. Новый необязательный интерфейс
-`FlagSwitch extends FlagProvider`:
+Переключатель — не флаг: флаг, которого нет, выключен, а переключатель, которого
+никто не трогал, **включён**. Отдельный интерфейс `SwitchProvider`:
 
 ```php
-public function set(string $flag, bool $enabled, Actor $by, ?string $reason = null): void;
-/** @return array{enabled: bool, reason: ?string, by: ?array, at: ?DateTimeImmutable} */
-public function state(string $flag): array;
+public function isOn(string $switch): bool;
+public function set(string $switch, bool $on, Actor $by, ?string $reason = null): void;
+/** @return array{on: bool, reason: ?string, by: ?array, at: ?DateTimeImmutable} */
+public function state(string $switch): array;
 ```
 
-Мост реализует его таблицей (ADR-016). Ядро в памяти — `StaticFlags` с `set`.
+Его реализует тот же объект, что и `FlagProvider` движка (условие `switch` в
+выражениях проверяет `$flags instanceof SwitchProvider`): в памяти —
+`StaticFlags` (по умолчанию у движка), в мосте — таблица (ADR-016).
 
 ### 3. Выключение
 
-`Engine::switchOff($flag, Actor $by, string $reason)` / `switchOn(...)`:
-1. `FlagSwitch::set` (без записываемого провайдера — исключение);
+`Engine::switchOff($switch, Actor $by, string $reason)` / `switchOn(...)` / `switchState(...)`:
+1. `SwitchProvider::set` (без него — исключение);
 2. для выключения — событие `switch.off {flag, reason}` каждому идущему
    экземпляру, у которого активно состояние с `switch.flag = $flag`
    (`InstanceQuery` по активным состояниям); ключ события —
    `switch.off:<flag>:<время>`;
-3. сигнал `flag.changed {flag, enabled, reason, by}` — приложение уведомляет
+3. сигнал `switch.changed {switch, on, reason, by}` — приложение уведомляет
    людей (автовыключение — `by` = система).
 
 Команда `SWITCH_OFF` из шага (автовыключение) исполняется рантаймом после
@@ -75,5 +78,5 @@ public function state(string $flag): array;
 ## Последствия
 
 - Компилятор добавляет переходы и действия, интерпретатор — команду `SWITCH_OFF`; формат определения расширяется полем `switch` у состояния (обратно совместимо).
-- `FlowExporter::graph` отдаёт на узле `enabled` (текущее значение флага, если передан провайдер) и `toggle: <flag>`; `overview` — то же.
+- `FlowExporter` (с `SwitchProvider` в конструкторе) отдаёт на узле `enabled` и `data.switch`.
 - Выключенный на запуск этап задаётся контекстом старта (`disabled: [...]`) — экран запуска передаёт список.

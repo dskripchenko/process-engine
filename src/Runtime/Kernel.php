@@ -6,9 +6,13 @@ namespace Dskripchenko\ProcessEngine\Runtime;
 
 use DateTimeImmutable;
 use Dskripchenko\ProcessEngine\Actor;
+use Dskripchenko\ProcessEngine\Interpreter\FlagProvider;
 use Dskripchenko\ProcessEngine\Interpreter\Interpreter;
+use Dskripchenko\ProcessEngine\Interpreter\Snapshot;
+use Dskripchenko\ProcessEngine\Interpreter\SwitchProvider;
 use Dskripchenko\ProcessEngine\Store\InboxRecord;
 use Dskripchenko\ProcessEngine\Store\IncidentRecord;
+use Dskripchenko\ProcessEngine\Store\InstanceQuery;
 use Dskripchenko\ProcessEngine\Store\JournalRecord;
 use Dskripchenko\ProcessEngine\Store\MessageRecord;
 use Dskripchenko\ProcessEngine\Store\Store;
@@ -47,6 +51,7 @@ final class Kernel
         public readonly ?EventListener $listener = null,
         ?string $worker = null,
         public readonly ?Projector $projector = null,
+        public readonly ?FlagProvider $flags = null,
     ) {
         $this->worker = $worker ?? gethostname().':'.getmypid().':'.bin2hex(random_bytes(4));
     }
@@ -104,6 +109,35 @@ final class Kernel
     public function batches(): Batches
     {
         return $this->batches ??= new Batches($this);
+    }
+
+    /**
+     * Turn a switch of switchable states on or off (ADR-015). Off: every
+     * running instance standing in a state with that switch gets
+     * `switch.off` and leaves it.
+     */
+    public function setSwitch(string $switch, bool $on, Actor $by, ?string $reason, ?string $origin = null): void
+    {
+        $switches = $this->flags instanceof SwitchProvider ? $this->flags : throw new \RuntimeException('No SwitchProvider: switches cannot be changed');
+        $switches->set($switch, $on, $by, $reason);
+        $this->signal('switch.changed', $origin ?? '', ['switch' => $switch, 'on' => $on, 'reason' => $reason, 'by' => $by->toArray()]);
+        if ($on) {
+            return;
+        }
+        $key = 'switch.off:'.$switch.':'.$this->now()->format('Uu');
+        foreach ($this->store->definitions() as $record) {
+            foreach ($this->definitions->load($record->id)->nodes() as $node) {
+                if (($node->meta['switch']['name'] ?? null) !== $switch) {
+                    continue;
+                }
+                $query = new InstanceQuery(statuses: [Snapshot::RUNNING, Snapshot::SUSPENDED], definitionName: $record->name, definitionVersion: $record->version, state: $node->id, limit: 10000);
+                foreach ($this->store->queryInstances($query) as $instance) {
+                    if ($instance->id !== $origin) {
+                        $this->deliver($instance->id, 'switch.off', ['switch' => $switch, 'reason' => $reason], $key, $by);
+                    }
+                }
+            }
+        }
     }
 
     public function inTransaction(): bool
