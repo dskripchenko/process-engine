@@ -210,7 +210,13 @@ final class Validator
     {
         $issues = [];
         $id = $node->id;
-        if (isset($invoke['effect'])) {
+        if (isset($invoke['batch'])) {
+            array_push($issues, ...self::effect((string) $invoke['batch'], $id));
+            $items = (string) ($invoke['items'] ?? '');
+            if ($items === '' || ! class_exists($items)) {
+                $issues[] = Issue::error('batch', "The source of a batch does not exist: `{$items}`", $id);
+            }
+        } elseif (isset($invoke['effect'])) {
             array_push($issues, ...self::effect((string) $invoke['effect'], $id));
         } elseif (isset($invoke['process'])) {
             $process = (string) $invoke['process'];

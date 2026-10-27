@@ -37,6 +37,9 @@ use Dskripchenko\ProcessEngine\Runtime\Steps;
 use Dskripchenko\ProcessEngine\Runtime\SyncDispatcher;
 use Dskripchenko\ProcessEngine\Runtime\SystemClock;
 use Dskripchenko\ProcessEngine\Runtime\Ticker;
+use Dskripchenko\ProcessEngine\Store\BatchItemRecord;
+use Dskripchenko\ProcessEngine\Store\BatchRecord;
+use Dskripchenko\ProcessEngine\Store\BatchStore;
 use Dskripchenko\ProcessEngine\Store\DefinitionRecord;
 use Dskripchenko\ProcessEngine\Store\EffectRecord;
 use Dskripchenko\ProcessEngine\Store\IncidentRecord;
@@ -384,6 +387,37 @@ final class Engine
     }
 
     /**
+     * The batch invocations of an instance (ADR-014), oldest first.
+     *
+     * @return list<BatchRecord>
+     */
+    public function batches(string $instanceId): array
+    {
+        $store = $this->kernel->store;
+
+        return $store instanceof BatchStore ? $store->batches($instanceId) : [];
+    }
+
+    public function batch(string $batchId): ?BatchRecord
+    {
+        $store = $this->kernel->store;
+
+        return $store instanceof BatchStore ? $store->findBatch($batchId) : null;
+    }
+
+    /**
+     * Elements of a batch in position order, a page at a time.
+     *
+     * @return list<BatchItemRecord>
+     */
+    public function batchItems(string $batchId, ?string $status = null, int $limit = 100, ?int $afterPosition = null): array
+    {
+        $store = $this->kernel->store;
+
+        return $store instanceof BatchStore ? $store->batchItems($batchId, $status, $limit, $afterPosition) : [];
+    }
+
+    /**
      * Instances per active state of a process version: the overview of a map.
      *
      * @param  class-string<Process>|string  $process
@@ -511,6 +545,24 @@ final class Engine
     public function redeliver(string $instanceId, int $inboxId, Actor $by, string $reason): Receipt
     {
         return $this->operate($instanceId, 'redeliver', ['inbox' => $inboxId], $by, $reason);
+    }
+
+    /**
+     * Elements of a running batch back into its queue, attempts from zero.
+     *
+     * @param  list<string>  $statuses  of failed, deferred, not_found, skipped
+     */
+    public function retryBatchItems(string $instanceId, string $batchId, Actor $by, string $reason, array $statuses = ['failed', 'deferred']): Receipt
+    {
+        return $this->operate($instanceId, 'retry_batch', ['batch' => $batchId, 'statuses' => $statuses], $by, $reason);
+    }
+
+    /**
+     * Skip the rest of a running batch: the state goes on as if it finished.
+     */
+    public function skipBatch(string $instanceId, string $batchId, Actor $by, string $reason): Receipt
+    {
+        return $this->operate($instanceId, 'skip_batch', ['batch' => $batchId], $by, $reason);
     }
 
     /**
@@ -718,7 +770,13 @@ final class Engine
                     'incidents' => array_map(fn (IncidentRecord $i) => [
                         'id' => $i->id, 'type' => $i->type, 'status' => $i->status, 'message' => $i->message, 'resolution' => $i->resolution,
                     ], $store->incidents($id, null, 10000)),
+                    'batches' => $store instanceof BatchStore ? array_map(fn (BatchRecord $b) => [
+                        'id' => $b->id, 'state' => $b->state, 'handler' => $b->handler, 'status' => $b->status, 'counters' => $b->summary(), 'error' => $b->error,
+                    ], $store->batches($id)) : [],
                 ]);
+                if ($store instanceof BatchStore) {
+                    $store->deleteBatches($id);
+                }
                 $n++;
             });
         }

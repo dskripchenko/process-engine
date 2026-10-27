@@ -80,8 +80,42 @@ final class EffectExecutor
         match ($claimed->kind) {
             EffectRecord::KIND_POLL => $this->poll($claimed),
             EffectRecord::KIND_COMPENSATION => $this->compensation($claimed),
+            EffectRecord::KIND_BATCH => $this->chunk($claimed),
             default => $this->attempt($claimed),
         };
+    }
+
+    /**
+     * A chunk of a batch (ADR-014): the handler outside any transaction, then
+     * the outcomes of its elements in one; the feeder only refills.
+     */
+    private function chunk(EffectRecord $effect): void
+    {
+        try {
+            $result = $this->k->batches()->call($effect);
+        } catch (SimulatedCrash $e) {
+            throw $e;
+        } catch (EffectNotExecuted $e) {
+            $this->k->tx(fn () => $this->retryOrExhaust($effect, $e));
+
+            return;
+        } catch (EffectFailed $e) {
+            $this->k->tx(fn () => $this->fail($effect, $e->errorCode, $e->getMessage(), $e->details));
+
+            return;
+        } catch (Throwable $e) {
+            $this->k->tx(fn () => $this->ambiguous($effect, $e));
+
+            return;
+        }
+        $this->k->faults->hit('batch.after_call');
+        if ($result === null) {
+            $this->k->batches()->fed($effect);
+
+            return;
+        }
+        $this->k->batches()->complete($effect, $result);
+        $this->k->faults->hit('batch.after_record');
     }
 
     private function attempt(EffectRecord $effect): void
@@ -155,6 +189,14 @@ final class EffectExecutor
     {
         $fresh = $this->k->store->findEffect($effect->id) ?? $effect;
         if ($fresh->status === EffectRecord::CANCELLED) {
+            return;
+        }
+        if ($fresh->kind === EffectRecord::KIND_BATCH) {
+            $this->k->journal($fresh->instanceId, 'effect.failed', ['key' => $fresh->key, 'class' => $fresh->class, 'attempt' => $fresh->attempt, 'code' => $code, 'message' => $message]);
+            $exhausted
+                ? $this->k->batches()->exhausted($fresh, $message)
+                : $this->k->batches()->stop($fresh, $code, $message);
+
             return;
         }
         $fresh->status = EffectRecord::FAILED;

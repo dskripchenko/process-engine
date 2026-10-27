@@ -407,7 +407,58 @@ final class Builder
             $invoke['retry'] = $retry->toArray();
         }
         $this->node['invoke'][] = $invoke;
+        $this->invokeTransitions($invokeId, $class, $isProcess, $into, $onDone, $onError, $onUnknown);
 
+        return $this;
+    }
+
+    /**
+     * Work through many elements (ADR-014): the keys come page by page from
+     * `items:` (an ItemSource class), `chunk` of them per call of the handler
+     * (a BatchHandler class, #[Idempotent]), `concurrency` calls at a time; an
+     * element that fails is tried again in later chunks up to `itemAttempts`.
+     * `done.invoke` carries the counters (`into:` stores them); a chunk that
+     * throws EffectFailed stops the batch with `error.invoke` and its code.
+     *
+     * @param  class-string  $handler
+     * @param  class-string  $items
+     * @param  string|BackedEnum|array<string, string|BackedEnum>|null  $onError
+     */
+    public function batch(
+        string $handler,
+        string $items,
+        int $chunk = 100,
+        int $concurrency = 1,
+        int $itemAttempts = 3,
+        ?string $into = null,
+        string|BackedEnum|null $onDone = null,
+        string|BackedEnum|array|null $onError = null,
+        ?Retry $retry = null,
+        ?string $id = null,
+    ): self {
+        Compiler::assertBatch($handler, $items);
+        if ($chunk < 1 || $concurrency < 1 || $itemAttempts < 1) {
+            throw new DefinitionError("batch({$handler}): chunk, concurrency and itemAttempts are at least 1");
+        }
+        $invokeId = $id ?? $this->compiler->nextId($this->id().'.'.Compiler::short($handler));
+        $invoke = ['id' => $invokeId, 'batch' => $handler, 'items' => $items, 'chunk' => $chunk, 'concurrency' => $concurrency, 'itemAttempts' => $itemAttempts];
+        if ($retry !== null) {
+            $invoke['retry'] = $retry->toArray();
+        }
+        $this->node['invoke'][] = $invoke;
+        $this->invokeTransitions($invokeId, $handler, false, $into, $onDone, $onError, null);
+
+        return $this;
+    }
+
+    /**
+     * The transitions on the outcome of an invocation.
+     *
+     * @param  string|BackedEnum|array<string, string|BackedEnum>|null  $onDone
+     * @param  string|BackedEnum|array<string, string|BackedEnum>|null  $onError
+     */
+    private function invokeTransitions(string $invokeId, string $class, bool $isProcess, ?string $into, string|BackedEnum|array|null $onDone, string|BackedEnum|array|null $onError, string|BackedEnum|null $onUnknown): void
+    {
         $assign = $into !== null
             ? [['type' => 'assign', 'set' => [Predicate::path($into) => ['path' => '$.event.output']]]]
             : [];
@@ -450,8 +501,6 @@ final class Builder
         if ($onUnknown !== null) {
             $this->node['on'][] = $this->transition('unknown.invoke.'.$invokeId, $onUnknown, null, null, null);
         }
-
-        return $this;
     }
 
     /**

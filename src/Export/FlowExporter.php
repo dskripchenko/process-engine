@@ -10,6 +10,7 @@ use Dskripchenko\ProcessEngine\Definition\Transition;
 use Dskripchenko\ProcessEngine\Interpreter\Run;
 use Dskripchenko\ProcessEngine\Process;
 use Dskripchenko\ProcessEngine\Query\InstanceView;
+use Dskripchenko\ProcessEngine\Store\BatchRecord;
 use Dskripchenko\ProcessEngine\Store\EffectRecord;
 use Dskripchenko\ProcessEngine\Store\IncidentRecord;
 
@@ -88,6 +89,13 @@ final class FlowExporter
 
         $effects = $instance->effects();
         $incidents = $instance->incidents(IncidentRecord::OPEN);
+        $batches = [];
+        foreach ($instance->batches() as $batch) {
+            $member = $this->memberOf($definition, $members, $batch->state);
+            if ($member !== null && $batch->isRunning()) {
+                $batches[$member->id] = $batch;
+            }
+        }
         $nodes = [];
         foreach ($members as $member) {
             $run = [];
@@ -112,6 +120,10 @@ final class FlowExporter
                 }
                 if (isset($snapshot->entered[$member->id])) {
                     $run['updatedAt'] = $snapshot->entered[$member->id];
+                }
+                if (isset($batches[$member->id])) {
+                    $run['status'] = 'active';
+                    [$run['badge'], $run['message']] = self::progress($batches[$member->id]);
                 }
             } elseif ($member->isFinal() && $instance->final() === $member->id) {
                 $run['status'] = 'done';
@@ -145,6 +157,26 @@ final class FlowExporter
         }
 
         return $out;
+    }
+
+    /**
+     * The progress of a running batch: a badge (finished / total) and a line of counters.
+     *
+     * @return array{0: string, 1: string}
+     */
+    private static function progress(BatchRecord $batch): array
+    {
+        $s = $batch->summary();
+        $finished = $s['done'] + $s['not_found'] + $s['failed'] + $s['deferred'] + $s['skipped'];
+        $total = $batch->total ?? ($batch->exhausted ? $s['total'] : null);
+        $parts = ["done {$s['done']}"];
+        foreach (['not_found' => 'not found', 'failed' => 'failed', 'deferred' => 'deferred', 'skipped' => 'skipped'] as $key => $label) {
+            if ($s[$key] > 0) {
+                $parts[] = "{$label} {$s[$key]}";
+            }
+        }
+
+        return [$total !== null ? "{$finished} / {$total}" : (string) $finished, implode(', ', $parts)];
     }
 
     /**

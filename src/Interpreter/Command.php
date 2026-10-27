@@ -25,6 +25,9 @@ final class Command
     /** {key, process, input, inputClass?, invoke?, spawn?, activation, item?, index?, onScopeExit} */
     public const START_CHILD = 'start_child';
 
+    /** Start a batch invocation (ADR-014). */
+    public const START_BATCH = 'start_batch';
+
     /**
      * Everything bound to an activation of a state ends with it: pending
      * effects of its invocations, timers, polls, subscriptions and children

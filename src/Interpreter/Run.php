@@ -743,6 +743,26 @@ final class Run
             ? $this->call((string) $invoke['input'], null, $item !== null ? [$item] : [])
             : null;
 
+        if (isset($invoke['batch'])) {
+            $this->commands[] = new Command(Command::START_BATCH, [
+                'key' => $key,
+                'invoke' => $invoke['id'],
+                'handler' => $invoke['batch'],
+                'source' => $invoke['items'],
+                'chunk' => $invoke['chunk'] ?? null,
+                'concurrency' => $invoke['concurrency'] ?? null,
+                'itemAttempts' => $invoke['itemAttempts'] ?? null,
+                'retry' => $invoke['retry'] ?? null,
+                'context' => $this->snapshot->context,
+                'contextClass' => $this->snapshot->contextClass,
+                'activation' => $activation,
+                'state' => $node->id,
+                'scopes' => $this->scopes(),
+            ]);
+
+            return;
+        }
+
         if (isset($invoke['process'])) {
             $childInput = $input ?? ($item !== null ? $item : []);
             $this->commands[] = new Command(Command::START_CHILD, [

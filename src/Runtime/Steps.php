@@ -198,6 +198,9 @@ final class Steps
                 case Command::START_CHILD:
                     $this->startChild($instance, $d);
                     break;
+                case Command::START_BATCH:
+                    $this->k->batches()->start($instance, $d);
+                    break;
                 case Command::CANCEL_ACTIVATION:
                     $this->cancelActivation($instance, (string) $d['prefix']);
                     break;
@@ -231,6 +234,7 @@ final class Steps
             $effect->status = EffectRecord::CANCELLED;
             $this->k->store->updateEffect($effect);
         }
+        $this->k->batches()->cancel($instance->id, '', $reason ?? 'the instance was cancelled');
         if ($notifyParent) {
             $this->notifyParent($instance, 'cancelled', null, null);
         }
@@ -395,6 +399,7 @@ final class Steps
         }
         $this->k->store->cancelTimers($instance->id, $prefix);
         $this->k->store->deleteSubscriptions($instance->id, $prefix);
+        $this->k->batches()->cancel($instance->id, $prefix, 'the state was left');
         foreach ($this->k->store->children($instance->id) as $child) {
             if ($child->isFinished() || $child->parentKey === null || ! str_starts_with($child->parentKey, $prefix)) {
                 continue;

@@ -99,6 +99,18 @@ final class Kernel
         return $result;
     }
 
+    private ?Batches $batches = null;
+
+    public function batches(): Batches
+    {
+        return $this->batches ??= new Batches($this);
+    }
+
+    public function inTransaction(): bool
+    {
+        return $this->depth > 0;
+    }
+
     public function ringInstance(string $id): void
     {
         $this->rings[] = ['instance', $id];

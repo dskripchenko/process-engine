@@ -10,6 +10,8 @@ use Dskripchenko\ProcessEngine\Interpreter\ExpectedEvent;
 use Dskripchenko\ProcessEngine\Interpreter\Interpreter;
 use Dskripchenko\ProcessEngine\Interpreter\Snapshot;
 use Dskripchenko\ProcessEngine\Interpreter\StepContext;
+use Dskripchenko\ProcessEngine\Store\BatchRecord;
+use Dskripchenko\ProcessEngine\Store\BatchStore;
 use Dskripchenko\ProcessEngine\Store\EffectRecord;
 use Dskripchenko\ProcessEngine\Store\InboxRecord;
 use Dskripchenko\ProcessEngine\Store\IncidentRecord;
@@ -273,6 +275,20 @@ final class InstanceView
     public function subscriptions(): array
     {
         return $this->archived !== null ? [] : $this->store->subscriptions($this->record->id);
+    }
+
+    /**
+     * The batch invocations of the instance (ADR-014), oldest first.
+     *
+     * @return list<BatchRecord>
+     */
+    public function batches(): array
+    {
+        if ($this->archived !== null) {
+            return [];
+        }
+
+        return $this->store instanceof BatchStore ? $this->store->batches($this->record->id) : [];
     }
 
     /**
