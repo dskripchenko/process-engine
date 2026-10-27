@@ -99,6 +99,7 @@ final class Expression
             'any' => array_reduce((array) $args, fn (bool $carry, $e) => $carry || (is_array($e) && self::test($e, $scope, $flags)), false),
             'not' => is_array($args) && ! self::test($args, $scope, $flags),
             'flag' => $flags !== null && is_string($args) && $flags->enabled($args),
+            'switch' => ! is_string($args) || ! $flags instanceof SwitchProvider || $flags->isOn($args),
             default => throw new InvalidArgumentException('Unknown predicate operator `'.(string) $op.'`'),
         };
     }

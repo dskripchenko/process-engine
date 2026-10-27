@@ -39,6 +39,9 @@ final class EffectRecord
 
     public const KIND_COMPENSATION = 'compensation';
 
+    /** A chunk of a batch invocation (ADR-014); without keys — the feeder that only refills. */
+    public const KIND_BATCH = 'batch';
+
     /**
      * @param  array<string, mixed>  $input  {context, contextClass, input, item, index, invoke, activation, state, scopes, poll}
      * @param  array<string, mixed>  $retry

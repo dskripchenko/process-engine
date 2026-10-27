@@ -27,6 +27,7 @@ final class ManualOperations
     public const OPERATIONS = [
         'transition', 'patch', 'suspend', 'resume', 'cancel', 'fail',
         'retry_effect', 'resolve_effect', 'skip_effect', 'resolve_incident', 'redeliver', 'migrate',
+        'retry_batch', 'skip_batch',
     ];
 
     private ?Migrator $migrator = null;
@@ -62,6 +63,8 @@ final class ManualOperations
                 'skip_effect' => $this->resolveEffect($instance, (string) ($p['effect'] ?? ''), ['outcome' => 'succeeded', 'result' => $p['result'] ?? null, 'skipped' => true]),
                 'resolve_incident' => $this->resolveIncident($instance, (string) ($p['incident'] ?? ''), (string) ($p['resolution'] ?? 'resolved'), $actor),
                 'redeliver' => $this->redeliver($instance, (int) ($p['inbox'] ?? 0)),
+                'retry_batch' => $this->k->batches()->retryItems($instance->id, (string) ($p['batch'] ?? ''), array_values(array_map('strval', (array) ($p['statuses'] ?? ['failed', 'deferred'])))),
+                'skip_batch' => $this->k->batches()->skip($instance->id, (string) ($p['batch'] ?? ''), $reason),
                 'migrate' => $this->migrator?->apply($instance, $p, $actor, $reason) ?? throw new InvalidArgumentException('Migrations are not configured'),
                 default => throw new InvalidArgumentException("Unknown operation `{$op}`"),
             };
@@ -142,6 +145,7 @@ final class ManualOperations
         $this->commitSnapshot($instance, $snapshot, $actor, $snapshot->context, $reason);
         if ($status === Snapshot::RUNNING) {
             $this->k->ringInstance($instance->id);
+            $this->k->batches()->resume($instance->id);
         }
 
         return $status;

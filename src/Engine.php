@@ -13,7 +13,9 @@ use Dskripchenko\ProcessEngine\Interpreter\BusinessCalendar;
 use Dskripchenko\ProcessEngine\Interpreter\FlagProvider;
 use Dskripchenko\ProcessEngine\Interpreter\Interpreter;
 use Dskripchenko\ProcessEngine\Interpreter\Snapshot;
+use Dskripchenko\ProcessEngine\Interpreter\StaticFlags;
 use Dskripchenko\ProcessEngine\Interpreter\StepContext;
+use Dskripchenko\ProcessEngine\Interpreter\SwitchProvider;
 use Dskripchenko\ProcessEngine\Interpreter\WeekdayCalendar;
 use Dskripchenko\ProcessEngine\Query\InstanceView;
 use Dskripchenko\ProcessEngine\Runtime\Clock;
@@ -37,6 +39,9 @@ use Dskripchenko\ProcessEngine\Runtime\Steps;
 use Dskripchenko\ProcessEngine\Runtime\SyncDispatcher;
 use Dskripchenko\ProcessEngine\Runtime\SystemClock;
 use Dskripchenko\ProcessEngine\Runtime\Ticker;
+use Dskripchenko\ProcessEngine\Store\BatchItemRecord;
+use Dskripchenko\ProcessEngine\Store\BatchRecord;
+use Dskripchenko\ProcessEngine\Store\BatchStore;
 use Dskripchenko\ProcessEngine\Store\DefinitionRecord;
 use Dskripchenko\ProcessEngine\Store\EffectRecord;
 use Dskripchenko\ProcessEngine\Store\IncidentRecord;
@@ -92,6 +97,7 @@ final class Engine
         ?Projector $projector = null,
     ) {
         $clock ??= new SystemClock;
+        $flags ??= new StaticFlags;
         $this->kernel = new Kernel(
             store: $store,
             clock: $clock,
@@ -104,6 +110,7 @@ final class Engine
             listener: $listener,
             worker: $worker,
             projector: $projector,
+            flags: $flags,
         );
         $this->steps = new Steps($this->kernel);
         $this->executor = new EffectExecutor($this->kernel);
@@ -384,6 +391,37 @@ final class Engine
     }
 
     /**
+     * The batch invocations of an instance (ADR-014), oldest first.
+     *
+     * @return list<BatchRecord>
+     */
+    public function batches(string $instanceId): array
+    {
+        $store = $this->kernel->store;
+
+        return $store instanceof BatchStore ? $store->batches($instanceId) : [];
+    }
+
+    public function batch(string $batchId): ?BatchRecord
+    {
+        $store = $this->kernel->store;
+
+        return $store instanceof BatchStore ? $store->findBatch($batchId) : null;
+    }
+
+    /**
+     * Elements of a batch in position order, a page at a time.
+     *
+     * @return list<BatchItemRecord>
+     */
+    public function batchItems(string $batchId, ?string $status = null, int $limit = 100, ?int $afterPosition = null): array
+    {
+        $store = $this->kernel->store;
+
+        return $store instanceof BatchStore ? $store->batchItems($batchId, $status, $limit, $afterPosition) : [];
+    }
+
+    /**
      * Instances per active state of a process version: the overview of a map.
      *
      * @param  class-string<Process>|string  $process
@@ -511,6 +549,52 @@ final class Engine
     public function redeliver(string $instanceId, int $inboxId, Actor $by, string $reason): Receipt
     {
         return $this->operate($instanceId, 'redeliver', ['inbox' => $inboxId], $by, $reason);
+    }
+
+    /**
+     * Switch off a stage everywhere (ADR-015): states declared
+     * `switchable($switch, ...)` are skipped from now on, and instances
+     * standing in one leave it.
+     */
+    public function switchOff(string $switch, Actor $by, string $reason): void
+    {
+        if (trim($reason) === '') {
+            throw new InvalidArgumentException('Switching a stage off needs a reason');
+        }
+        $this->kernel->tx(fn () => $this->kernel->setSwitch($switch, false, $by, $reason));
+    }
+
+    public function switchOn(string $switch, Actor $by, ?string $reason = null): void
+    {
+        $this->kernel->tx(fn () => $this->kernel->setSwitch($switch, true, $by, $reason));
+    }
+
+    /**
+     * @return array{on: bool, reason: ?string, by: ?array<string, mixed>, at: ?\DateTimeImmutable}
+     */
+    public function switchState(string $switch): array
+    {
+        $flags = $this->kernel->flags;
+
+        return $flags instanceof SwitchProvider ? $flags->state($switch) : ['on' => true, 'reason' => null, 'by' => null, 'at' => null];
+    }
+
+    /**
+     * Elements of a running batch back into its queue, attempts from zero.
+     *
+     * @param  list<string>  $statuses  of failed, deferred, not_found, skipped
+     */
+    public function retryBatchItems(string $instanceId, string $batchId, Actor $by, string $reason, array $statuses = ['failed', 'deferred']): Receipt
+    {
+        return $this->operate($instanceId, 'retry_batch', ['batch' => $batchId, 'statuses' => $statuses], $by, $reason);
+    }
+
+    /**
+     * Skip the rest of a running batch: the state goes on as if it finished.
+     */
+    public function skipBatch(string $instanceId, string $batchId, Actor $by, string $reason): Receipt
+    {
+        return $this->operate($instanceId, 'skip_batch', ['batch' => $batchId], $by, $reason);
     }
 
     /**
@@ -718,7 +802,13 @@ final class Engine
                     'incidents' => array_map(fn (IncidentRecord $i) => [
                         'id' => $i->id, 'type' => $i->type, 'status' => $i->status, 'message' => $i->message, 'resolution' => $i->resolution,
                     ], $store->incidents($id, null, 10000)),
+                    'batches' => $store instanceof BatchStore ? array_map(fn (BatchRecord $b) => [
+                        'id' => $b->id, 'state' => $b->state, 'handler' => $b->handler, 'status' => $b->status, 'counters' => $b->summary(), 'error' => $b->error,
+                    ], $store->batches($id)) : [],
                 ]);
+                if ($store instanceof BatchStore) {
+                    $store->deleteBatches($id);
+                }
                 $n++;
             });
         }

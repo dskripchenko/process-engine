@@ -15,6 +15,7 @@ use Dskripchenko\ProcessEngine\Interpreter\Command;
 use Dskripchenko\ProcessEngine\Interpreter\Snapshot;
 use Dskripchenko\ProcessEngine\Interpreter\StepContext;
 use Dskripchenko\ProcessEngine\Interpreter\StepResult;
+use Dskripchenko\ProcessEngine\Interpreter\SwitchProvider;
 use Dskripchenko\ProcessEngine\Process;
 use Dskripchenko\ProcessEngine\Store\DefinitionRecord;
 use Dskripchenko\ProcessEngine\Store\EffectRecord;
@@ -198,6 +199,17 @@ final class Steps
                 case Command::START_CHILD:
                     $this->startChild($instance, $d);
                     break;
+                case Command::START_BATCH:
+                    $this->k->batches()->start($instance, $d);
+                    break;
+                case Command::SWITCH_OFF:
+                    if ($this->k->flags instanceof SwitchProvider) {
+                        $this->k->setSwitch((string) $d['switch'], false, Actor::system(), (string) $d['reason'], $instance->id);
+                        $this->k->journal($instance->id, 'switch.off', ['switch' => $d['switch'], 'state' => $d['state'], 'code' => $d['code'], 'reason' => $d['reason']]);
+                    } else {
+                        $this->k->journal($instance->id, 'switch.off_skipped', ['switch' => $d['switch'], 'why' => 'no SwitchProvider']);
+                    }
+                    break;
                 case Command::CANCEL_ACTIVATION:
                     $this->cancelActivation($instance, (string) $d['prefix']);
                     break;
@@ -231,6 +243,7 @@ final class Steps
             $effect->status = EffectRecord::CANCELLED;
             $this->k->store->updateEffect($effect);
         }
+        $this->k->batches()->cancel($instance->id, '', $reason ?? 'the instance was cancelled');
         if ($notifyParent) {
             $this->notifyParent($instance, 'cancelled', null, null);
         }
@@ -395,6 +408,7 @@ final class Steps
         }
         $this->k->store->cancelTimers($instance->id, $prefix);
         $this->k->store->deleteSubscriptions($instance->id, $prefix);
+        $this->k->batches()->cancel($instance->id, $prefix, 'the state was left');
         foreach ($this->k->store->children($instance->id) as $child) {
             if ($child->isFinished() || $child->parentKey === null || ! str_starts_with($child->parentKey, $prefix)) {
                 continue;

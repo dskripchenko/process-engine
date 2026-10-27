@@ -6,7 +6,10 @@ namespace Dskripchenko\ProcessEngine\Builder;
 
 use BackedEnum;
 use Closure;
+use Dskripchenko\ProcessEngine\Attributes\AtMostOnce;
 use Dskripchenko\ProcessEngine\Attributes\Semantics;
+use Dskripchenko\ProcessEngine\Batch\BatchHandler;
+use Dskripchenko\ProcessEngine\Batch\ItemSource;
 use Dskripchenko\ProcessEngine\Definition\Definition;
 use Dskripchenko\ProcessEngine\Definition\DefinitionError;
 use Dskripchenko\ProcessEngine\Definition\Validator;
@@ -209,6 +212,26 @@ final class Compiler
         $pos = strrpos($class, '\\');
 
         return lcfirst($pos === false ? $class : substr($class, $pos + 1));
+    }
+
+    /**
+     * A batch needs an #[Idempotent] BatchHandler with handle() and an
+     * ItemSource with keys().
+     */
+    public static function assertBatch(string $handler, string $items): void
+    {
+        self::assertEffect($handler);
+        if (! is_subclass_of($handler, BatchHandler::class) || ! method_exists($handler, 'handle')) {
+            throw new DefinitionError("Batch handler {$handler} must implement BatchHandler with handle()");
+        }
+        foreach ((new ReflectionClass($handler))->getAttributes() as $attribute) {
+            if ($attribute->getName() === AtMostOnce::class) {
+                throw new DefinitionError("Batch handler {$handler} must be #[Idempotent]: a retried chunk repeats its elements");
+            }
+        }
+        if (! class_exists($items) || ! is_subclass_of($items, ItemSource::class) || ! method_exists($items, 'keys')) {
+            throw new DefinitionError("Batch source {$items} must implement ItemSource with keys()");
+        }
     }
 
     public static function assertEffect(string $class): void

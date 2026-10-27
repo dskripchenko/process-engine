@@ -99,6 +99,7 @@ $engine->get($process->id())->final();   // 'done'
 | Effects and retry semantics | [en](docs/en/effects.md) | [de](docs/de/effects.md) | [ru](docs/ru/effects.md) | [zh](docs/zh/effects.md) |
 | Events, timers, polling | [en](docs/en/events-and-timers.md) | [de](docs/de/events-and-timers.md) | [ru](docs/ru/events-and-timers.md) | [zh](docs/zh/events-and-timers.md) |
 | Versions and migrations | [en](docs/en/versioning.md) | [de](docs/de/versioning.md) | [ru](docs/ru/versioning.md) | [zh](docs/zh/versioning.md) |
+| Data pipelines: batches, switchable stages | [en](docs/en/pipelines.md) | [de](docs/de/pipelines.md) | [ru](docs/ru/pipelines.md) | [zh](docs/zh/pipelines.md) |
 | Operating instances | [en](docs/en/operations.md) | [de](docs/de/operations.md) | [ru](docs/ru/operations.md) | [zh](docs/zh/operations.md) |
 | Drawing with @dskripchenko/flow | [en](docs/en/flow.md) | [de](docs/de/flow.md) | [ru](docs/ru/flow.md) | [zh](docs/zh/flow.md) |
 | Testing processes | [en](docs/en/testing.md) | [de](docs/de/testing.md) | [ru](docs/ru/testing.md) | [zh](docs/zh/testing.md) |

@@ -407,7 +407,58 @@ final class Builder
             $invoke['retry'] = $retry->toArray();
         }
         $this->node['invoke'][] = $invoke;
+        $this->invokeTransitions($invokeId, $class, $isProcess, $into, $onDone, $onError, $onUnknown);
 
+        return $this;
+    }
+
+    /**
+     * Work through many elements (ADR-014): the keys come page by page from
+     * `items:` (an ItemSource class), `chunk` of them per call of the handler
+     * (a BatchHandler class, #[Idempotent]), `concurrency` calls at a time; an
+     * element that fails is tried again in later chunks up to `itemAttempts`.
+     * `done.invoke` carries the counters (`into:` stores them); a chunk that
+     * throws EffectFailed stops the batch with `error.invoke` and its code.
+     *
+     * @param  class-string  $handler
+     * @param  class-string  $items
+     * @param  string|BackedEnum|array<string, string|BackedEnum>|null  $onError
+     */
+    public function batch(
+        string $handler,
+        string $items,
+        int $chunk = 100,
+        int $concurrency = 1,
+        int $itemAttempts = 3,
+        ?string $into = null,
+        string|BackedEnum|null $onDone = null,
+        string|BackedEnum|array|null $onError = null,
+        ?Retry $retry = null,
+        ?string $id = null,
+    ): self {
+        Compiler::assertBatch($handler, $items);
+        if ($chunk < 1 || $concurrency < 1 || $itemAttempts < 1) {
+            throw new DefinitionError("batch({$handler}): chunk, concurrency and itemAttempts are at least 1");
+        }
+        $invokeId = $id ?? $this->compiler->nextId($this->id().'.'.Compiler::short($handler));
+        $invoke = ['id' => $invokeId, 'batch' => $handler, 'items' => $items, 'chunk' => $chunk, 'concurrency' => $concurrency, 'itemAttempts' => $itemAttempts];
+        if ($retry !== null) {
+            $invoke['retry'] = $retry->toArray();
+        }
+        $this->node['invoke'][] = $invoke;
+        $this->invokeTransitions($invokeId, $handler, false, $into, $onDone, $onError, null);
+
+        return $this;
+    }
+
+    /**
+     * The transitions on the outcome of an invocation.
+     *
+     * @param  string|BackedEnum|array<string, string|BackedEnum>|null  $onDone
+     * @param  string|BackedEnum|array<string, string|BackedEnum>|null  $onError
+     */
+    private function invokeTransitions(string $invokeId, string $class, bool $isProcess, ?string $into, string|BackedEnum|array|null $onDone, string|BackedEnum|array|null $onError, string|BackedEnum|null $onUnknown): void
+    {
         $assign = $into !== null
             ? [['type' => 'assign', 'set' => [Predicate::path($into) => ['path' => '$.event.output']]]]
             : [];
@@ -450,6 +501,39 @@ final class Builder
         if ($onUnknown !== null) {
             $this->node['on'][] = $this->transition('unknown.invoke.'.$invokeId, $onUnknown, null, null, null);
         }
+    }
+
+    /**
+     * A stage that can be switched off (ADR-015): globally by its switch
+     * (`Engine::switchOff`, an admin toggle), for one run by listing the
+     * switch in the context's `disabled`, or by the engine when an invocation
+     * of the state fails with a code from `offOn`. A switched-off stage is
+     * skipped to `skipTo` before it invokes anything, and the skip is noted in
+     * the context's `skipped` list; switching it off while it runs leaves it
+     * (its batch is cancelled, waiting elements deferred).
+     *
+     * @param  list<string>  $offOn  error codes of the state's invocations that switch it off
+     */
+    public function switchable(string $switch, string|BackedEnum $skipTo, array $offOn = [], ?string $label = null): self
+    {
+        if ($switch === '') {
+            throw new DefinitionError('switchable(): name the switch');
+        }
+        $target = Compiler::id($skipTo);
+        $this->node['always'] ??= [];
+        $note = fn (string $reason): array => [['type' => 'assign', 'set' => ['$.context.skipped' => ['append' => ['state' => $this->id(), 'switch' => $switch, 'reason' => $reason]]]]];
+        array_unshift(
+            $this->node['always'],
+            ['guard' => ['type' => 'predicate', 'expr' => ['in' => [$switch, '$.context.disabled']]], 'actions' => $note('off for this run'), 'target' => $target, 'label' => 'off for this run'],
+            ['guard' => ['type' => 'predicate', 'expr' => ['not' => ['switch' => $switch]]], 'actions' => $note('off'), 'target' => $target, 'label' => 'switched off'],
+        );
+        $this->node['on'][] = [
+            'event' => 'switch.off', 'guard' => ['type' => 'predicate', 'expr' => ['eq' => ['$.event.switch', $switch]]],
+            'actions' => $note('switched off while running'), 'target' => $target, 'label' => 'switched off',
+        ];
+        $this->node['meta'] = array_merge($this->node['meta'] ?? [], [
+            'switch' => ['name' => $switch, 'label' => $label, 'offOn' => array_values($offOn), 'skipTo' => $target],
+        ]);
 
         return $this;
     }

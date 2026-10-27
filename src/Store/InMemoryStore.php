@@ -12,7 +12,7 @@ use Throwable;
  * scripts. Transactions snapshot the whole state and restore it on failure,
  * which is what crash simulations rely on.
  */
-final class InMemoryStore implements Store
+final class InMemoryStore implements BatchStore, Store
 {
     /** @var array<string, DefinitionRecord> */
     private array $definitions = [];
@@ -51,6 +51,12 @@ final class InMemoryStore implements Store
 
     /** @var array<string, array<string, mixed>> */
     private array $archive = [];
+
+    /** @var array<string, BatchRecord> */
+    private array $batches = [];
+
+    /** @var array<string, array<string, BatchItemRecord>> batch id => key => element */
+    private array $batchItems = [];
 
     private int $depth = 0;
 
@@ -599,6 +605,128 @@ final class InMemoryStore implements Store
     public function findArchived(string $id): ?array
     {
         return $this->archive[$id] ?? null;
+    }
+
+    // Batches -----------------------------------------------------------------
+
+    public function insertBatch(BatchRecord $record): void
+    {
+        $this->batches[$record->id] = clone $record;
+        $this->batchItems[$record->id] = [];
+    }
+
+    public function findBatch(string $id): ?BatchRecord
+    {
+        return isset($this->batches[$id]) ? clone $this->batches[$id] : null;
+    }
+
+    public function updateBatch(BatchRecord $record, int $expectedSeq): bool
+    {
+        $current = $this->batches[$record->id] ?? null;
+        if ($current === null || $current->seq !== $expectedSeq) {
+            return false;
+        }
+        $record->seq = $expectedSeq + 1;
+        $this->batches[$record->id] = clone $record;
+
+        return true;
+    }
+
+    public function batches(string $instanceId, ?string $status = null): array
+    {
+        $out = [];
+        foreach ($this->batches as $batch) {
+            if ($batch->instanceId === $instanceId && ($status === null || $batch->status === $status)) {
+                $out[] = clone $batch;
+            }
+        }
+
+        return $out;
+    }
+
+    public function insertBatchItems(string $batchId, array $keys, int $firstPosition, DateTimeImmutable $now): int
+    {
+        $added = 0;
+        foreach ($keys as $key) {
+            if (isset($this->batchItems[$batchId][$key])) {
+                continue;
+            }
+            $this->batchItems[$batchId][$key] = new BatchItemRecord($batchId, $key, $firstPosition + $added, updatedAt: $now);
+            $added++;
+        }
+
+        return $added;
+    }
+
+    public function batchItems(string $batchId, ?string $status = null, int $limit = 100, ?int $afterPosition = null): array
+    {
+        $out = [];
+        foreach ($this->batchItems[$batchId] ?? [] as $item) {
+            if (($status === null || $item->status === $status) && ($afterPosition === null || $item->position > $afterPosition)) {
+                $out[] = clone $item;
+            }
+        }
+        usort($out, fn (BatchItemRecord $a, BatchItemRecord $b) => $a->position <=> $b->position);
+
+        return array_slice($out, 0, $limit);
+    }
+
+    public function findBatchItems(string $batchId, array $keys): array
+    {
+        $out = [];
+        foreach ($keys as $key) {
+            if (isset($this->batchItems[$batchId][$key])) {
+                $out[$key] = clone $this->batchItems[$batchId][$key];
+            }
+        }
+
+        return $out;
+    }
+
+    public function updateBatchItems(array $items): void
+    {
+        foreach ($items as $item) {
+            if (isset($this->batchItems[$item->batchId][$item->key])) {
+                $this->batchItems[$item->batchId][$item->key] = clone $item;
+            }
+        }
+    }
+
+    public function moveBatchItems(string $batchId, array $from, string $to, ?string $reason, DateTimeImmutable $now, bool $resetAttempts = false): int
+    {
+        $moved = 0;
+        foreach ($this->batchItems[$batchId] ?? [] as $item) {
+            if (in_array($item->status, $from, true)) {
+                $item->status = $to;
+                $item->reason = $reason ?? $item->reason;
+                $item->updatedAt = $now;
+                if ($resetAttempts) {
+                    $item->attempts = 0;
+                }
+                $moved++;
+            }
+        }
+
+        return $moved;
+    }
+
+    public function deleteBatches(string $instanceId): void
+    {
+        foreach ($this->batches as $id => $batch) {
+            if ($batch->instanceId === $instanceId) {
+                unset($this->batches[$id], $this->batchItems[$id]);
+            }
+        }
+    }
+
+    public function countBatchItems(string $batchId): array
+    {
+        $out = [];
+        foreach ($this->batchItems[$batchId] ?? [] as $item) {
+            $out[$item->status] = ($out[$item->status] ?? 0) + 1;
+        }
+
+        return $out;
     }
 
     // State snapshot for transactions -----------------------------------------

@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [1.2.0] - 2026-10-27
+
+### Added
+- **Batches** (ADR-014): `Builder::batch()` works a state through many elements
+  taken page by page from an `ItemSource`, a chunk per call of an `#[Idempotent]`
+  `BatchHandler`, `concurrency` chunks at a time. Each element ends `done`,
+  `not_found`, `skipped`, `deferred` or `failed` (tried again up to
+  `itemAttempts`); `EffectNotExecuted` makes the stage wait, `EffectFailed`
+  stops the batch with `error.invoke`; `done.invoke` carries the counters. A
+  separate `BatchStore` contract (implemented by `InMemoryStore`); operations
+  `retryBatchItems()`, `skipBatch()`, reads `batches()`, `batch()`,
+  `batchItems()`; progress on the diagram node; batches go into the archive.
+  About 10 000 elements a second of the engine's own cost, flat to a million.
+- **Switchable states** (ADR-015): `Builder::switchable($switch, skipTo:, offOn:)`
+  skips a stage switched off everywhere (`Engine::switchOff/switchOn/switchState`),
+  for one run (`disabled` in the start context) or by the engine on an error code
+  from `offOn`; the skip is noted in the context's `skipped`. `SwitchProvider`
+  (implemented by `StaticFlags`, the engine's default flags now); the signal
+  `switch.changed`; `FlowExporter` marks switchable nodes `enabled`.
+- Fault points `batch.after_call` and `batch.after_record` for the crash harness.
+
 ## [1.1.0] - 2026-10-27
 ### Fixed
 - `Process::projections()` is annotated as returning `Projection` objects
