@@ -358,7 +358,8 @@ final class FlowExporter
                 continue;
             }
             foreach ([...$source->on, ...$source->always] as $transition) {
-                if ($transition->target === null) {
+                // The skips of a switchable state are its switch on the node, not edges (ADR-015).
+                if ($transition->target === null || self::isSwitchSkip($source, $transition)) {
                     continue;
                 }
                 $to = $this->memberOf($definition, $members, $transition->target);
@@ -390,7 +391,54 @@ final class FlowExporter
             }
         }
 
-        return $edges;
+        return self::mergeParallel($edges);
+    }
+
+    /**
+     * Edges between the same two nodes drawn as one, their labels joined —
+     * `done` and `error` of a stage that goes on either way.
+     *
+     * @param  list<array<string, mixed>>  $edges
+     * @return list<array<string, mixed>>
+     */
+    private static function mergeParallel(array $edges): array
+    {
+        $byPair = [];
+        foreach ($edges as $edge) {
+            $pair = $edge['from'].'|'.$edge['to'];
+            if (! isset($byPair[$pair])) {
+                $byPair[$pair] = $edge;
+
+                continue;
+            }
+            $labels = array_values(array_unique(array_filter([...explode(' / ', (string) ($byPair[$pair]['label'] ?? '')), (string) ($edge['label'] ?? '')])));
+            if ($labels !== []) {
+                $byPair[$pair]['label'] = implode(' / ', $labels);
+            }
+            if (($byPair[$pair]['condition'] ?? null) !== ($edge['condition'] ?? null)) {
+                unset($byPair[$pair]['condition']);
+            }
+        }
+
+        return array_values($byPair);
+    }
+
+    /**
+     * A transition switchable() generated: the skip of a switched-off stage.
+     */
+    private static function isSwitchSkip(StateNode $source, Transition $transition): bool
+    {
+        $switch = $source->meta['switch']['name'] ?? null;
+        if (! is_string($switch)) {
+            return false;
+        }
+        if ($transition->event === 'switch.off') {
+            return true;
+        }
+        $expr = $transition->guard['expr'] ?? null;
+
+        return $transition->event === null && is_array($expr)
+            && (($expr['not']['switch'] ?? null) === $switch || ($expr['in'][0] ?? null) === $switch);
     }
 
     /**

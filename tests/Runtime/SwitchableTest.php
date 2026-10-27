@@ -82,3 +82,15 @@ it('marks switchable stages on the graph, off when their switch is off', functio
     $flags->set('enrichment.dadata', false, $t->operator(), 'test');
     expect($node((new FlowExporter($flags))->graph($definition))['enabled'])->toBeFalse();
 });
+
+it('draws a switchable stage without its skips and one edge where done and error meet', function () {
+    $t = new ProcessTest;
+    $definition = $t->engine->start(Batches\Pipeline::class, ['n' => 1])->definition();
+    $graph = (new FlowExporter)->graph($definition);
+
+    $fromDadata = array_values(array_filter($graph['edges'], fn ($e) => $e['from'] === 'dadata'));
+    expect($fromDadata)->toHaveCount(1)
+        ->and($fromDadata[0]['to'])->toBe('merge')
+        ->and($fromDadata[0]['label'] ?? '')->not->toContain('switched off')
+        ->and($fromDadata[0]['label'] ?? '')->not->toContain('off for this run');
+});
