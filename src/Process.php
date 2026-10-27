@@ -6,6 +6,7 @@ namespace Dskripchenko\ProcessEngine;
 
 use Dskripchenko\ProcessEngine\Attributes\ProcessName;
 use Dskripchenko\ProcessEngine\Builder\Builder;
+use Dskripchenko\ProcessEngine\Builder\Projection;
 use LogicException;
 use ReflectionClass;
 
@@ -25,7 +26,7 @@ abstract class Process
     /**
      * Mirrors of the current state into columns of host models, see `project()`.
      *
-     * @return list<\Dskripchenko\ProcessEngine\Builder\Projection|array<string, mixed>>
+     * @return list<Projection|array<string, mixed>>
      */
     public function projections(): array
     {
