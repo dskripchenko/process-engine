@@ -7,6 +7,7 @@ namespace Dskripchenko\ProcessEngine\Definition;
 use Dskripchenko\ProcessEngine\Attributes\Idempotent;
 use Dskripchenko\ProcessEngine\Attributes\Semantics;
 use Dskripchenko\ProcessEngine\Builder\Compiler;
+use Dskripchenko\ProcessEngine\Effect\Compensable;
 use Dskripchenko\ProcessEngine\Process;
 use Dskripchenko\ProcessEngine\Support\Duration;
 use ReflectionClass;
@@ -47,6 +48,10 @@ final class Validator
         }
 
         $class = $definition->processClass();
+        $policy = $data['root']['onOrphan'] ?? null;
+        if ($policy !== null && ! in_array($policy, ['log', 'compensate'], true)) {
+            $issues[] = Issue::error('on-orphan', 'onOrphan is log or compensate, not `'.(is_string($policy) ? $policy : gettype($policy)).'`');
+        }
         $key = $definition->key();
         self::$compiling[$key] = true;
         try {
@@ -84,6 +89,15 @@ final class Validator
             case StateType::Parallel:
                 if ($node->stateChildren() === []) {
                     $issues[] = Issue::error('empty-parallel', 'A parallel state needs regions', $id);
+                }
+                if ($node->join === 'quorum') {
+                    if (is_int($node->quorum) && ($node->quorum < 1 || $node->quorum > count($node->stateChildren()))) {
+                        $issues[] = Issue::error('quorum', "A quorum of {$node->quorum} out of ".count($node->stateChildren()).' regions', $id);
+                    } elseif (is_string($node->quorum)) {
+                        array_push($issues, ...self::method($node->quorum, $class, $id, 'quorum'));
+                    } elseif ($node->quorum === null) {
+                        $issues[] = Issue::error('quorum', 'A quorum is a number or a method', $id);
+                    }
                 }
                 break;
             case StateType::Final:
@@ -230,6 +244,23 @@ final class Validator
         }
         if (isset($invoke['input'])) {
             array_push($issues, ...self::method((string) $invoke['input'], $class, $id, 'input'));
+        }
+        if (isset($invoke['join'])) {
+            $quorum = Definition::quorumOf($invoke['join']);
+            if (! isset($invoke['forEach'])) {
+                $issues[] = Issue::error('quorum', 'A quorum of an invocation needs forEach', $id);
+            } elseif (is_string($quorum)) {
+                array_push($issues, ...self::method($quorum, $class, $id, 'quorum'));
+            } elseif ($quorum === null || $quorum < 1) {
+                $issues[] = Issue::error('quorum', 'A quorum is a number of at least 1 or a method', $id);
+            }
+        }
+        $orphan = $invoke['onOrphan'] ?? null;
+        if ($orphan !== null && ! in_array($orphan, ['log', 'compensate'], true)) {
+            $issues[] = Issue::error('on-orphan', "onOrphan is log or compensate, not `{$orphan}`", $id);
+        } elseif ($orphan === 'compensate' && isset($invoke['effect']) && ! is_subclass_of((string) $invoke['effect'], Compensable::class)) {
+            // The process-wide policy passes over effects that cannot be undone; an invoke that asks for it must be undoable.
+            $issues[] = Issue::error('on-orphan', 'onOrphan: compensate needs a Compensable effect', $id);
         }
 
         return $issues;

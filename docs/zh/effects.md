@@ -154,6 +154,22 @@ $p->state('undoBooking', fn (Builder $s) => $s->compensate(onDone: 'choosingSlot
   没有发生的事是错误的。
 - `Engine::cancel($id, ..., compensate: true)` 先补偿整个流程，然后取消它。
 
+### 迟到的结果（孤儿）
+
+结果可能在已无人等待时到达：状态已离开、法定数量已达到、实例已结束。默认情况下它
+只被写入日志（`effect.orphaned`）。使用 `onOrphan: 'compensate'` 时它会被撤销：
+
+```php
+->invoke(PayOut::class, onDone: 'paid', onOrphan: 'compensate')   // 此调用
+$p->onOrphan('compensate');                                        // 流程的所有调用
+```
+
+- 副作用被补偿（它必须是 `Compensable`；流程级策略会跳过无法撤销的副作用），
+  日志中记为 `effect.orphan_compensating` / `effect.orphan_compensated`；流程不会
+  收到 `done.compensation`；
+- 结果未知的 at-most-once 副作用先进行核对，只有核对发现它已执行时才撤销；
+- 子流程在执行完自己的补偿后被取消。
+
 ## 轮询
 
 轮询是绑定到某个状态的周期性幂等副作用；参见

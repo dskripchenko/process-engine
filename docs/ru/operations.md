@@ -36,7 +36,9 @@ $engine->instances(new InstanceQuery(state: 'awaitingDocuments', definitionName:
 $engine->instances(new InstanceQuery(hasIncidents: true));
 $engine->stateCounts(ClaimSettlement::class);   // state => instances, for an overview map
 $engine->openIncidents();
-$engine->health();   // running, suspended, with_incidents, open_incidents, overdue_timers, expired_effect_leases
+$engine->health();   // running, suspended, with_incidents, open_incidents, overdue_timers, expired_effect_leases,
+                     // а с хранилищем, которое их считает: unknown_effects (EngineOptions::$unknownAfter),
+                     // stale_inbox, stale_outbox (EngineOptions::$staleAfter) — признак стоящих воркеров
 ```
 
 ## Журнал
@@ -48,7 +50,7 @@ $engine->health();   // running, suspended, with_incidents, open_incidents, over
 | `started`, `adopted`, `migrated` | версия, контекст, состояния |
 | `step` | событие и его payload, выполненные переходы (с гардом, разрешившим каждый), кандидаты, отклонённые своими гардами, состояния выхода и входа, патч контекста (RFC 6902), заметки, команды |
 | `event.ignored`, `event.deferred`, `event.discarded` | почему и что ожидалось |
-| `effect.succeeded`, `effect.retry`, `effect.failed`, `effect.unknown`, `effect.reconciled`, `effect.lease_expired`, `effect.compensated`, `effect.orphaned` | ключ, класс, попытка, результат или ошибка |
+| `effect.succeeded`, `effect.retry`, `effect.failed`, `effect.unknown`, `effect.reconciled`, `effect.lease_expired`, `effect.compensated`, `effect.orphaned`, `effect.orphan_compensating`, `effect.orphan_compensated` | ключ, класс, попытка, результат или ошибка |
 | `timer.fired`, `poll.result`, `child.started` | |
 | `incident.opened` | тип, сообщение |
 | `manual.*`, `manual.rejected` | операция, параметры, актор, причина |

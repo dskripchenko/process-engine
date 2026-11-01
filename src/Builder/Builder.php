@@ -42,6 +42,23 @@ final class Builder
         return (string) $this->node['id'];
     }
 
+    /**
+     * What becomes of an invocation's result that arrives after its state was
+     * left (ADR-017), for every invoke of the process that does not say:
+     * `log` (the default) writes it to the journal; `compensate` undoes it —
+     * an effect through its Compensable side, a child process by being
+     * cancelled with its own compensations.
+     */
+    public function onOrphan(string $policy): self
+    {
+        if ($this->id() !== Definition::ROOT) {
+            throw new DefinitionError('onOrphan() is set for the whole process: call it on the root builder');
+        }
+        $this->node['onOrphan'] = $policy;
+
+        return $this;
+    }
+
     // States ------------------------------------------------------------------
 
     /**
@@ -66,13 +83,14 @@ final class Builder
 
     /**
      * Regions active at the same time. `join: all` finishes when every region
-     * reaches a final state, `join: any` when the first one does.
+     * reaches a final state, `join: any` when the first one does, `join:
+     * quorum(n)` when n of them have (the rest are left, as with `any`).
      *
      * @param  array<string, mixed>  $meta
      */
-    public function parallel(string|BackedEnum $id, Closure $body, string $join = 'all', array $meta = []): self
+    public function parallel(string|BackedEnum $id, Closure $body, string|Quorum $join = 'all', array $meta = []): self
     {
-        $child = new self($this->compiler, ['id' => Compiler::id($id), 'type' => 'parallel', 'join' => $join]);
+        $child = new self($this->compiler, ['id' => Compiler::id($id), 'type' => 'parallel', 'join' => $join instanceof Quorum ? $this->compiler->quorum($join) : $join]);
         if ($meta !== []) {
             $child->node['meta'] = $meta;
         }
@@ -380,6 +398,8 @@ final class Builder
         string|BackedEnum|null $onUnknown = null,
         ?Retry $retry = null,
         ?string $id = null,
+        ?Quorum $join = null,
+        ?string $onOrphan = null,
     ): self {
         if (! class_exists($class)) {
             throw new DefinitionError("invoke(): class {$class} does not exist");
@@ -405,6 +425,15 @@ final class Builder
         }
         if ($retry !== null) {
             $invoke['retry'] = $retry->toArray();
+        }
+        if ($join !== null) {
+            if ($forEach === null) {
+                throw new DefinitionError("invoke({$class}): join: quorum() needs forEach");
+            }
+            $invoke['join'] = $this->compiler->quorum($join);
+        }
+        if ($onOrphan !== null) {
+            $invoke['onOrphan'] = $onOrphan;
         }
         $this->node['invoke'][] = $invoke;
         $this->invokeTransitions($invokeId, $class, $isProcess, $into, $onDone, $onError, $onUnknown);

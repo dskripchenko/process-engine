@@ -83,8 +83,12 @@ final class Interpreter
         if (str_starts_with($event->name, 'item.invoke.')) {
             $event = $run->collect($event);
             if ($event === null) {
-                return $run->result(StepResult::COLLECTED);
+                return $run->result(StepResult::COLLECTED, reason: $run->lateResult ? StepResult::AFTER_QUORUM : null);
             }
+        }
+        $event = $run->collectFailure($event);
+        if ($event === null) {
+            return $run->result(StepResult::COLLECTED);
         }
 
         $enabled = $run->select($event);

@@ -331,7 +331,7 @@ final class Steps
                 'activation' => $d['activation'] ?? null,
                 'state' => $d['state'] ?? null,
                 'scopes' => $d['scopes'] ?? [],
-            ],
+            ] + (isset($d['onOrphan']) ? ['onOrphan' => (string) $d['onOrphan']] : []),
             nextAttemptAt: $this->k->now(),
             compensable: is_subclass_of($class, Compensable::class),
             createdAt: $this->k->now(),
@@ -394,6 +394,7 @@ final class Steps
             'index' => $d['index'] ?? null,
             'item' => $d['item'] ?? null,
             'onScopeExit' => $d['onScopeExit'] ?? 'cancel',
+            'onOrphan' => $d['onOrphan'] ?? null,
         ], fn ($v) => $v !== null));
         $this->k->journal($instance->id, 'child.started', ['child' => $child->id, 'process' => $record->name, 'version' => $record->version, 'key' => $key]);
     }
@@ -414,6 +415,11 @@ final class Steps
                 continue;
             }
             if (($child->parentLink['onScopeExit'] ?? 'cancel') !== 'cancel') {
+                continue;
+            }
+            if (($child->parentLink['onOrphan'] ?? null) === 'compensate') {
+                $this->cancelCompensating($child, 'scope exited');
+
                 continue;
             }
             $this->cancelTree($child, Actor::system(), 'scope exited', false);
@@ -464,6 +470,55 @@ final class Steps
             }
         }
         $this->k->journal($instance->id, 'compensation.started', ['scope' => $scope, 'effects' => array_map(fn ($e) => $e->id, $done)]);
+    }
+
+    /**
+     * Cancel a child after its own compensations (ADR-017, `onOrphan:
+     * compensate`): as an operator's cancel with compensation — the
+     * compensations run in reverse order, then the child is cancelled.
+     */
+    public function cancelCompensating(InstanceRecord $child, string $reason): void
+    {
+        if ($child->isFinished()) {
+            return;
+        }
+        $definition = $this->k->definitions->load($child->definitionId);
+        $snapshot = Snapshot::fromArray($child->snapshot);
+        $snapshot->flags['cancel'] = ['actor' => Actor::system()->toArray(), 'reason' => $reason];
+        $this->commit($child, $definition, new StepResult(StepResult::TRANSITIONED, $snapshot), null, Actor::system(), $snapshot->context, $reason);
+        $this->compensate($child, null);
+    }
+
+    /**
+     * Undo the result of an effect that came after its state was left
+     * (ADR-017, `onOrphan: compensate`): one compensation, a run of its own —
+     * it is journalled, and the process gets no `done.compensation`.
+     */
+    public function compensateOrphan(EffectRecord $original): void
+    {
+        if (! $original->compensable || ($original->input['onOrphan'] ?? null) !== 'compensate'
+            || ! in_array($original->status, [EffectRecord::SUCCEEDED, EffectRecord::CANCELLED], true)) {
+            return;
+        }
+        $effect = new EffectRecord(
+            id: Uuid::v7($this->k->now()),
+            instanceId: $original->instanceId,
+            key: 'compensate:'.$original->key,
+            kind: EffectRecord::KIND_COMPENSATION,
+            class: $original->class,
+            semantics: 'idempotent',
+            retry: Retry::compensationDefault()->toArray(),
+            status: EffectRecord::PENDING,
+            input: $original->input + ['order' => 0, 'run' => 'orphan:'.$original->id, 'total' => 1],
+            nextAttemptAt: $this->k->now(),
+            compensationOf: $original->id,
+            createdAt: $this->k->now(),
+        );
+        // The key is the one a compensation of the whole process would use: never twice.
+        if ($this->k->store->insertEffect($effect)) {
+            $this->k->ringEffect($effect->id);
+            $this->k->journal($original->instanceId, 'effect.orphan_compensating', ['key' => $original->key, 'class' => $original->class]);
+        }
     }
 
     private function assertContextSize(Snapshot $snapshot): void

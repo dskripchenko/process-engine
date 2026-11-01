@@ -44,6 +44,7 @@ use Dskripchenko\ProcessEngine\Store\BatchRecord;
 use Dskripchenko\ProcessEngine\Store\BatchStore;
 use Dskripchenko\ProcessEngine\Store\DefinitionRecord;
 use Dskripchenko\ProcessEngine\Store\EffectRecord;
+use Dskripchenko\ProcessEngine\Store\HealthCounters;
 use Dskripchenko\ProcessEngine\Store\IncidentRecord;
 use Dskripchenko\ProcessEngine\Store\InMemoryStore;
 use Dskripchenko\ProcessEngine\Store\InstanceQuery;
@@ -441,7 +442,10 @@ final class Engine
     }
 
     /**
-     * Health numbers for monitoring.
+     * Health numbers for monitoring. With a store that counts them
+     * (HealthCounters): effects of unknown outcome for longer than
+     * `unknownAfter`, and events / due effects waiting longer than
+     * `staleAfter` — a sign the workers stand.
      *
      * @return array<string, int>
      */
@@ -457,7 +461,11 @@ final class Engine
             'open_incidents' => count($store->incidents(null, IncidentRecord::OPEN, 10000)),
             'overdue_timers' => count($store->overdueTimers($now->modify('-'.Duration::seconds($this->kernel->options->overdueAfter).' seconds'), 10000)),
             'expired_effect_leases' => count($store->expiredEffects($now, 10000)),
-        ];
+        ] + ($store instanceof HealthCounters ? [
+            'unknown_effects' => $store->countUnknownEffects($now->modify('-'.Duration::seconds($this->kernel->options->unknownAfter).' seconds')),
+            'stale_inbox' => $store->countStaleInbox($now->modify('-'.Duration::seconds($this->kernel->options->staleAfter).' seconds')),
+            'stale_outbox' => $store->countStaleOutbox($now->modify('-'.Duration::seconds($this->kernel->options->staleAfter).' seconds')),
+        ] : []);
     }
 
     // Operator actions --------------------------------------------------------

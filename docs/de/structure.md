@@ -40,6 +40,12 @@ $p->parallel('agreement', fn (Builder $s) => $s
 - `join: 'any'`: abgeschlossen, wenn die erste Region fertig ist; die anderen
   Regionen werden verlassen, ihre ausstehenden Effekte und Kindprozesse
   abgebrochen.
+- `join: quorum(2)`: abgeschlossen, wenn zwei Regionen fertig sind — zwei
+  Freigaben von dreien; die übrigen werden wie bei `any` verlassen. Die Zahl
+  kann eine Methode liefern (`quorum($this->majority(...))`), gelesen beim
+  Betreten des Zustands; sie liegt zwischen 1 und der Zahl der Regionen. Das
+  `done`-Ereignis trägt die Ausgaben der fertigen Regionen und ihre IDs in
+  `regions`.
 - Regionen sind logisch parallel und physisch sequenziell (eine Lease pro
   Instanz); ihre Effekte laufen tatsächlich parallel.
 
@@ -87,6 +93,17 @@ Ein Zustand kann einen anderen Prozess als separate Instanz ausführen:
 
 N Kindprozesse, Ergebnisse in der Reihenfolge der Liste gesammelt,
 abgeschlossen, wenn alle fertig sind.
+
+Mit `join: quorum(n)` ist der Aufruf fertig, sobald `n` Elemente erfolgreich
+waren — ihre Ausgaben in Listenreihenfolge, ihre Positionen in `indexes`. Ein
+fehlgeschlagenes Element wird gezählt; der Aufruf scheitert erst, wenn das
+Quorum nicht mehr erreichbar ist — `error.invoke` mit dem Code
+`quorum_unreachable` (`needed`, `done`, `failed`). Ergebnisse nach dem Quorum
+ändern nichts.
+
+```php
+->invoke(Approve::class, forEach: 'approvers', join: quorum($this->majority(...)), onDone: 'approved', onError: 'rejected')
+```
 
 ### Ein Kindprozess pro Ereignis: `spawn`
 

@@ -170,6 +170,26 @@ $p->state('undoBooking', fn (Builder $s) => $s->compensate(onDone: 'choosingSlot
 - `Engine::cancel($id, ..., compensate: true)` kompensiert den gesamten Prozess
   und bricht ihn dann ab.
 
+### Späte Ergebnisse (Waisen)
+
+Ein Ergebnis kann ankommen, wenn niemand mehr darauf wartet: der Zustand wurde
+verlassen, das Quorum erreicht, die Instanz beendet. Standardmäßig wird es nur
+ins Journal geschrieben (`effect.orphaned`). Mit `onOrphan: 'compensate'` wird
+es rückgängig gemacht:
+
+```php
+->invoke(PayOut::class, onDone: 'paid', onOrphan: 'compensate')   // dieser Aufruf
+$p->onOrphan('compensate');                                        // alle Aufrufe des Prozesses
+```
+
+- ein Effekt wird kompensiert (er muss `Compensable` sein; die prozessweite
+  Regel übergeht Effekte, die sich nicht rückgängig machen lassen), im Journal
+  als `effect.orphan_compensating` / `effect.orphan_compensated`; der Prozess
+  bekommt kein `done.compensation`;
+- ein At-most-once-Effekt mit unbekanntem Ausgang wird zuerst abgeglichen und
+  nur rückgängig gemacht, wenn der Abgleich ihn als ausgeführt findet;
+- ein Kindprozess wird nach seinen eigenen Kompensationen abgebrochen.
+
 ## Polls
 
 Ein Poll ist ein periodischer idempotenter Effekt, der an einen Zustand

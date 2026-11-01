@@ -35,7 +35,9 @@ $engine->instances(new InstanceQuery(state: 'awaitingDocuments', definitionName:
 $engine->instances(new InstanceQuery(hasIncidents: true));
 $engine->stateCounts(ClaimSettlement::class);   // state => instances, for an overview map
 $engine->openIncidents();
-$engine->health();   // running, suspended, with_incidents, open_incidents, overdue_timers, expired_effect_leases
+$engine->health();   // running, suspended, with_incidents, open_incidents, overdue_timers, expired_effect_leases,
+                     // 若存储支持计数，还有：unknown_effects（EngineOptions::$unknownAfter）、
+                     // stale_inbox、stale_outbox（EngineOptions::$staleAfter）——工作进程停滞的迹象
 ```
 
 ## 日志
@@ -47,7 +49,7 @@ $engine->health();   // running, suspended, with_incidents, open_incidents, over
 | `started`, `adopted`, `migrated` | 版本、上下文、状态 |
 | `step` | 事件及其载荷、所执行的转换（以及允许每个转换的守卫）、被守卫拒绝的候选转换、退出和进入的状态、上下文补丁（RFC 6902）、备注、命令 |
 | `event.ignored`, `event.deferred`, `event.discarded` | 原因，以及期望的事件 |
-| `effect.succeeded`, `effect.retry`, `effect.failed`, `effect.unknown`, `effect.reconciled`, `effect.lease_expired`, `effect.compensated`, `effect.orphaned` | 键、类、尝试次数、结果或错误 |
+| `effect.succeeded`, `effect.retry`, `effect.failed`, `effect.unknown`, `effect.reconciled`, `effect.lease_expired`, `effect.compensated`, `effect.orphaned`, `effect.orphan_compensating`, `effect.orphan_compensated` | 键、类、尝试次数、结果或错误 |
 | `timer.fired`, `poll.result`, `child.started` | |
 | `incident.opened` | 类型、消息 |
 | `manual.*`, `manual.rejected` | 操作、参数、操作者、原因 |

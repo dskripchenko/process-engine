@@ -78,7 +78,9 @@ Applying it, under the instance lease:
 2. the context is transformed;
 3. the instance enters the mapped states of the new version **without entry
    actions** — it is a move, not a new entry; their timers, polls,
-   subscriptions and invocations start (timers count from the migration);
+   subscriptions and invocations start (timers count from the migration; with `->preserveTimers()` a timer keeps
+   the deadline of the old one at the same place — the mapped state, the same
+   position among its timers — and one already past fires at the next tick);
 4. the journal gets a `migrated` entry with the state map, actor and reason.
 
 Migrations are code run by an operator, so closures are fine here. Register

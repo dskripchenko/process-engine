@@ -165,6 +165,25 @@ $p->state('undoBooking', fn (Builder $s) => $s->compensate(onDone: 'choosingSlot
 - `Engine::cancel($id, ..., compensate: true)` compensates the whole process,
   then cancels it.
 
+### Late results (orphans)
+
+A result can arrive after nobody waits for it: the state was left, the
+quorum reached, the instance finished. By default it is only journalled
+(`effect.orphaned`). With `onOrphan: 'compensate'` it is undone:
+
+```php
+->invoke(PayOut::class, onDone: 'paid', onOrphan: 'compensate')   // this invocation
+$p->onOrphan('compensate');                                        // every invocation of the process
+```
+
+- an effect is compensated (it must be `Compensable`; the process-wide policy
+  passes over effects that are not), journalled as
+  `effect.orphan_compensating` / `effect.orphan_compensated`; the process gets
+  no `done.compensation`;
+- an at-most-once effect of unknown outcome is reconciled first and undone only
+  when the reconciliation finds it executed;
+- a child process is cancelled after its own compensations.
+
 ## Polls
 
 A poll is a periodic idempotent effect bound to a state; see

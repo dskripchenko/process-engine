@@ -119,6 +119,7 @@ final class InstanceRunner
         if ($instance->isFinished()) {
             $this->finishInbox($inbox, InboxRecord::IGNORED, "the instance is {$instance->status}");
             $this->k->journal($instanceId, 'event.ignored', ['event' => ['name' => $inbox->name, 'payload' => $inbox->payload], 'reason' => "the instance is {$instance->status}"], $actor);
+            $this->orphan($instanceId, $inbox);
 
             return true;
         }
@@ -173,6 +174,10 @@ final class InstanceRunner
         };
         $this->finishInbox($inbox, $status, $result->reason);
 
+        if ($result->outcome === StepResult::DISCARDED || $result->reason === StepResult::AFTER_QUORUM) {
+            $this->orphan($instanceId, $inbox);
+        }
+
         if ($result->outcome === StepResult::IGNORED) {
             $this->k->signal('event.ignored', $instanceId, ['event' => $inbox->name]);
             if (str_starts_with($inbox->name, 'error.invoke.') || str_starts_with($inbox->name, 'error.spawn.')) {
@@ -186,6 +191,22 @@ final class InstanceRunner
         }
 
         return true;
+    }
+
+    /**
+     * An effect's result nobody waits for any more — its state was left, its
+     * quorum reached, the instance finished: undone if the invocation asked
+     * for it (ADR-017).
+     */
+    private function orphan(string $instanceId, InboxRecord $inbox): void
+    {
+        if (! isset($inbox->payload['effect']) || ! (str_starts_with($inbox->name, 'done.invoke.') || str_starts_with($inbox->name, 'item.invoke.'))) {
+            return;
+        }
+        $effect = $this->k->store->findEffect((string) $inbox->payload['effect']);
+        if ($effect !== null && $effect->instanceId === $instanceId) {
+            $this->steps->compensateOrphan($effect);
+        }
     }
 
     private function finishInbox(InboxRecord $inbox, string $status, ?string $reason): void

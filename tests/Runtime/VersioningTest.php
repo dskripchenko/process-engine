@@ -145,3 +145,24 @@ it('refuses an invalid definition with every problem named', function () {
         ]],
     ]);
 })->throws(DefinitionError::class, 'Invalid definition');
+
+it('keeps the timers\' deadlines when asked to', function () {
+    $t = new ProcessTest;
+    $t->engine->start(Runtime\VersionedV2::class);
+    $waiting = $t->engine->start(Runtime\VersionedV1::class)->id();
+    $t->drain();
+    $deadline = $t->engine->get($waiting)->timers()[0]->fireAt;
+    $t->travel('1 day', '6 hours');
+
+    $migration = Migration::from(Runtime\VersionedV1::class, 1)->to(2)->mapState('waiting', 'awaiting')->preserveTimers();
+    $t->engine->migrate($migration, $t->operator(), 'keep the deadline', dryRun: false);
+    $t->drain();
+    $view = $t->engine->get($waiting);
+    // The v1 deadline (2 days after start), not 5 days after the migration.
+    expect($view->timers())->toHaveCount(1)->and($view->timers()[0]->fireAt)->toEqual($deadline);
+    $migrated = array_values(array_filter($view->journal(), fn ($j) => $j->type === 'migrated'))[0];
+    expect($migrated->data['timersPreserved'])->toBe(1);
+
+    $t->travel('1 day', '1 hour');
+    expect($t->engine->get($waiting)->final())->toBe('late');
+});
