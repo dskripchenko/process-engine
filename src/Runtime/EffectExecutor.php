@@ -152,6 +152,7 @@ final class EffectExecutor
             $fresh->result = $output;
             $this->k->store->updateEffect($fresh);
             $this->k->journal($fresh->instanceId, 'effect.orphaned', ['key' => $fresh->key, 'class' => $fresh->class, 'result' => $output]);
+            (new Steps($this->k))->compensateOrphan($fresh);
 
             return;
         }
@@ -490,6 +491,12 @@ final class EffectExecutor
     public function continueCompensation(EffectRecord $finished): void
     {
         $run = $finished->input['run'] ?? null;
+        if (is_string($run) && str_starts_with($run, 'orphan:')) {
+            // An orphan's undo is a run of one, and no business of the process.
+            $this->k->journal($finished->instanceId, 'effect.orphan_compensated', ['key' => $finished->key, 'class' => $finished->class]);
+
+            return;
+        }
         $next = null;
         foreach ($this->k->store->effects($finished->instanceId, [EffectRecord::WAITING]) as $candidate) {
             if ($candidate->kind === EffectRecord::KIND_COMPENSATION && ($candidate->input['run'] ?? null) === $run

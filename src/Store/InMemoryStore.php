@@ -12,7 +12,7 @@ use Throwable;
  * scripts. Transactions snapshot the whole state and restore it on failure,
  * which is what crash simulations rely on.
  */
-final class InMemoryStore implements BatchStore, Store
+final class InMemoryStore implements BatchStore, HealthCounters, Store
 {
     /** @var array<string, DefinitionRecord> */
     private array $definitions = [];
@@ -389,6 +389,32 @@ final class InMemoryStore implements BatchStore, Store
         uasort($due, fn ($a, $b) => ($a->nextAttemptAt?->getTimestamp() ?? 0) <=> ($b->nextAttemptAt?->getTimestamp() ?? 0));
 
         return array_slice(array_keys($due), 0, $limit);
+    }
+
+    public function countUnknownEffects(DateTimeImmutable $before): int
+    {
+        return count(array_filter($this->effects, fn (EffectRecord $e) => in_array($e->status, [EffectRecord::UNKNOWN, EffectRecord::RECONCILING], true)
+            && ($e->createdAt === null || $e->createdAt < $before)));
+    }
+
+    public function countStaleInbox(DateTimeImmutable $before): int
+    {
+        $n = 0;
+        foreach ($this->inbox as $records) {
+            foreach ($records as $r) {
+                if ($r->status === InboxRecord::PENDING && $r->receivedAt < $before) {
+                    $n++;
+                }
+            }
+        }
+
+        return $n;
+    }
+
+    public function countStaleOutbox(DateTimeImmutable $before): int
+    {
+        return count(array_filter($this->effects, fn (EffectRecord $e) => $e->status === EffectRecord::PENDING
+            && $e->nextAttemptAt !== null && $e->nextAttemptAt < $before));
     }
 
     public function expiredEffects(DateTimeImmutable $now, int $limit): array

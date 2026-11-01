@@ -18,12 +18,14 @@ effect**, versioned definitions, a journal per instance and operator actions.
 - **Side effects you can reason about.** Every effect declares
   `#[Idempotent]` (retried) or `#[AtMostOnce]` (never retried blindly: an
   ambiguous failure becomes `unknown`, then reconciliation, then an operator).
-  Compensations, retry policies, incidents.
+  Compensations, retry policies, incidents; late results undone on request.
+- **Branches that join.** Parallel regions and forEach calls or children
+  join on all, any, or a quorum (`join: quorum(2)`).
 - **Waiting is first-class.** Events by instance, by correlation key (early
   ones are buffered) or by signed task token; timers and deadlines; polling of
   parties that cannot call back.
 - **Versions and operations.** Old instances finish on their version; explicit
-  migrations with a dry run. Journal with guard traces, "why is it here",
+  migrations with a dry run that can keep timer deadlines. Journal with guard traces, "why is it here",
   move-to-state, retry, skip, resolve, suspend, cancel — all with actor and reason.
 - **No dependencies.** Only PHP 8.2+. A Laravel bridge lives in
   [dskripchenko/laravel-process-engine](https://github.com/dskripchenko/laravel-process-engine).

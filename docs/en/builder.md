@@ -45,7 +45,7 @@ and choices that may get stuck.
 $p->state('review', fn (Builder $s) => $s /* … */);   // atomic, or compound with children
 $p->parallel('agreement', fn (Builder $s) => $s
     ->region('money', fn (Builder $r) => $r /* … */)
-    ->region('service', fn (Builder $r) => $r /* … */), join: 'all'); // or 'any'
+    ->region('service', fn (Builder $r) => $r /* … */), join: 'all'); // or 'any', quorum(2)
 $p->final('closed', output: 'payoutId');              // a context property or a method
 $p->choice('route')->when($this->isMoney(...), 'payout')->otherwise('finalizing');
 $p->history('resume', deep: true);                    // inside a compound state

@@ -6,6 +6,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [Unreleased]
+
+### Added
+- **Quorum** (ADR-017): `join: quorum(n)` on a parallel state finishes it once
+  `n` regions are done (the rest are left, as with `any`); on a forEach
+  invocation it is done once `n` elements succeeded (outputs in list order,
+  positions in `indexes`), and fails with `error.invoke` code
+  `quorum_unreachable` only when too many elements failed. `n` is a number or
+  a method of the process, read when the state is entered. Shown on the flow
+  diagram (`2 of 3`, `majority()`).
+- **Undoing late results** (ADR-017): `onOrphan: 'compensate'` on an invoke,
+  or `Builder::onOrphan()` for the whole process. A result that arrives after
+  its state was left, its quorum reached or the instance finished is
+  compensated (a `Compensable` effect; an at-most-once one of unknown outcome
+  only once reconciled as executed); a child process is cancelled after its own
+  compensations. Journal: `effect.orphan_compensating`,
+  `effect.orphan_compensated`. The default stays `log`.
+- **`Migration::preserveTimers()`**: timers keep their deadlines across a
+  migration — a timer of the new version takes the deadline of the old one at
+  the same place (mapped state, same position); a deadline already past fires
+  at the next tick. The `migrated` journal entry counts them.
+- **Health counters**: `Engine::health()` adds `unknown_effects`,
+  `stale_inbox` and `stale_outbox` when the store implements the new optional
+  `HealthCounters` interface (InMemoryStore does); thresholds
+  `EngineOptions::$unknownAfter` (15 minutes) and `$staleAfter` (5 minutes).
+
 ## [1.2.1] - 2026-10-27
 
 ### Fixed

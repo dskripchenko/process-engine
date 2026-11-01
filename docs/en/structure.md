@@ -37,6 +37,11 @@ $p->parallel('agreement', fn (Builder $s) => $s
   the `done` event carries each region's output.
 - `join: 'any'`: done when the first region finishes; the other regions are
   exited, their pending effects and child processes cancelled.
+- `join: quorum(2)`: done when two regions have finished — two approvals of
+  three; the rest are exited as with `any`. The number can come from a method
+  (`quorum($this->majority(...))`), read when the state is entered; it must be
+  between 1 and the number of regions. The `done` event carries the outputs of
+  the regions that finished and their ids in `regions`.
 - Regions are logically parallel and physically sequential (one lease per
   instance); their effects run truly in parallel.
 
@@ -82,6 +87,16 @@ A state can run another process as a separate instance:
 ```
 
 N children, results collected in the order of the list, done when all are.
+
+With `join: quorum(n)` the invocation is done once `n` elements succeeded —
+their outputs in list order, their positions in `indexes`. A failed element is
+counted; the invocation fails only when the quorum can no longer be reached,
+with `error.invoke` and the code `quorum_unreachable` (`needed`, `done`,
+`failed`). Results arriving after the quorum change nothing.
+
+```php
+->invoke(Approve::class, forEach: 'approvers', join: quorum($this->majority(...)), onDone: 'approved', onError: 'rejected')
+```
 
 ### One child per event: `spawn`
 

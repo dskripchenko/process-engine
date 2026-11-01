@@ -9,6 +9,7 @@ use Dskripchenko\ProcessEngine\Builder\ActionSpec;
 use Dskripchenko\ProcessEngine\Builder\BusinessDays;
 use Dskripchenko\ProcessEngine\Builder\Predicate;
 use Dskripchenko\ProcessEngine\Builder\Projection;
+use Dskripchenko\ProcessEngine\Builder\Quorum;
 use Dskripchenko\ProcessEngine\Builder\StepSpec;
 
 // Builder helpers. Paths without `$.` are context properties: `'amount'`
@@ -136,6 +137,15 @@ if (! function_exists(__NAMESPACE__.'\step')) {
     function note(string $message): ActionSpec
     {
         return new ActionSpec(['type' => 'log', 'message' => $message]);
+    }
+
+    /**
+     * `join: quorum(2)` — go on once 2 of the branches are done; a method
+     * (`quorum($this->m('majority'))`) reads the number when the state is entered.
+     */
+    function quorum(int|Closure $n): Quorum
+    {
+        return new Quorum($n);
     }
 
     function businessDays(int $days): BusinessDays

@@ -22,6 +22,9 @@ final class StepResult
     /** One element of a forEach call recorded; the call is not complete yet. */
     public const COLLECTED = 'collected';
 
+    /** The reason of a COLLECTED result that came after its invocation's quorum (an orphan). */
+    public const AFTER_QUORUM = 'after the quorum';
+
     /**
      * @param  list<Command>  $commands
      * @param  list<array<string, mixed>>  $transitions  taken: {source, target, event, guard?}

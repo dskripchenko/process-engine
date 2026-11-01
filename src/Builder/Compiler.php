@@ -97,6 +97,23 @@ final class Compiler
         self::$cache = [];
     }
 
+    /**
+     * The canonical form of a quorum: `{"quorum": 2}` or `{"quorum": {"method": "majority"}}`.
+     *
+     * @return array{quorum: int|array{method: string}}
+     */
+    public function quorum(Quorum $quorum): array
+    {
+        if ($quorum->n instanceof Closure) {
+            return ['quorum' => ['method' => $this->methodName($quorum->n, 'quorum')]];
+        }
+        if ($quorum->n < 1) {
+            throw new DefinitionError("quorum({$quorum->n}): at least 1");
+        }
+
+        return ['quorum' => $quorum->n];
+    }
+
     public function nextId(string $prefix): string
     {
         $n = $this->counters[$prefix] = ($this->counters[$prefix] ?? 0) + 1;

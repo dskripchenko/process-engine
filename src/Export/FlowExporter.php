@@ -304,6 +304,9 @@ final class FlowExporter
             if ($member->isParallel()) {
                 $data['kind'] = 'parallel';
                 $data['join'] = $member->join;
+                if ($member->join === 'quorum') {
+                    $data['quorum'] = self::quorumLabel($member->quorum, count($member->stateChildren()));
+                }
             }
         } elseif ($processInvoke !== []) {
             $class = (string) $processInvoke[0]['process'];
@@ -311,6 +314,9 @@ final class FlowExporter
             $node['subgraph'] = is_subclass_of($class, Process::class) ? $class::processName().'@'.$class::processVersion() : $class;
             if (isset($processInvoke[0]['forEach'])) {
                 $data['forEach'] = $processInvoke[0]['forEach'];
+            }
+            if (isset($processInvoke[0]['join'])) {
+                $data['quorum'] = self::quorumLabel(Definition::quorumOf($processInvoke[0]['join']), null);
             }
         } elseif ($batchInvoke !== []) {
             $node['type'] = 'task';
@@ -321,6 +327,9 @@ final class FlowExporter
             $data['effect'] = self::short((string) $effectInvoke[0]['effect']);
             if (isset($effectInvoke[0]['forEach'])) {
                 $data['forEach'] = $effectInvoke[0]['forEach'];
+            }
+            if (isset($effectInvoke[0]['join'])) {
+                $data['quorum'] = self::quorumLabel(Definition::quorumOf($effectInvoke[0]['join']), null);
             }
         } elseif ($member->isHistory()) {
             $node['type'] = 'state';
@@ -339,6 +348,18 @@ final class FlowExporter
         }
 
         return $node;
+    }
+
+    /**
+     * A quorum on the diagram: `2 of 3`, `2`, or the method that counts it (`majority()`).
+     */
+    private static function quorumLabel(int|string|null $quorum, ?int $of): string
+    {
+        if (is_string($quorum)) {
+            return $quorum.'()';
+        }
+
+        return $of !== null ? "{$quorum} of {$of}" : (string) $quorum;
     }
 
     /**

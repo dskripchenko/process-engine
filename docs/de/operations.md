@@ -36,7 +36,9 @@ $engine->instances(new InstanceQuery(state: 'awaitingDocuments', definitionName:
 $engine->instances(new InstanceQuery(hasIncidents: true));
 $engine->stateCounts(ClaimSettlement::class);   // state => instances, for an overview map
 $engine->openIncidents();
-$engine->health();   // running, suspended, with_incidents, open_incidents, overdue_timers, expired_effect_leases
+$engine->health();   // running, suspended, with_incidents, open_incidents, overdue_timers, expired_effect_leases,
+                     // und mit einem Store, der sie zählt: unknown_effects (EngineOptions::$unknownAfter),
+                     // stale_inbox, stale_outbox (EngineOptions::$staleAfter) — ein Zeichen stehender Worker
 ```
 
 ## Das Journal
@@ -49,7 +51,7 @@ Zeitpunkt. Die wichtigsten Typen:
 | `started`, `adopted`, `migrated` | Version, Kontext, Zustände |
 | `step` | das Ereignis und sein Payload, genommene Übergänge (jeweils mit dem Guard, der sie erlaubt hat), von ihren Guards abgelehnte Kandidaten, verlassene und betretene Zustände, der Kontext-Patch (RFC 6902), Notizen, Befehle |
 | `event.ignored`, `event.deferred`, `event.discarded` | warum, und was erwartet wurde |
-| `effect.succeeded`, `effect.retry`, `effect.failed`, `effect.unknown`, `effect.reconciled`, `effect.lease_expired`, `effect.compensated`, `effect.orphaned` | Schlüssel, Klasse, Versuch, Ergebnis oder Fehler |
+| `effect.succeeded`, `effect.retry`, `effect.failed`, `effect.unknown`, `effect.reconciled`, `effect.lease_expired`, `effect.compensated`, `effect.orphaned`, `effect.orphan_compensating`, `effect.orphan_compensated` | Schlüssel, Klasse, Versuch, Ergebnis oder Fehler |
 | `timer.fired`, `poll.result`, `child.started` | |
 | `incident.opened` | Typ, Meldung |
 | `manual.*`, `manual.rejected` | die Operation, Parameter, Akteur, Begründung |

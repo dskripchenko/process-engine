@@ -77,7 +77,10 @@ Die Anwendung unter der Lease der Instanz:
 2. der Kontext wird transformiert;
 3. die Instanz betritt die zugeordneten Zustände der neuen Version **ohne
    Entry-Aktionen** — es ist ein Umzug, kein neues Betreten; ihre Timer, Polls,
-   Abonnements und Aufrufe starten (Timer zählen ab der Migration);
+   Abonnements und Aufrufe starten (Timer zählen ab der Migration; mit `->preserveTimers()` behält ein Timer
+   die Frist des alten an derselben Stelle — im zugeordneten Zustand, an
+   derselben Position unter seinen Timern — und eine schon verstrichene Frist
+   feuert beim nächsten Tick);
 4. das Journal erhält einen `migrated`-Eintrag mit der Zustandszuordnung, dem
    Akteur und der Begründung.
 

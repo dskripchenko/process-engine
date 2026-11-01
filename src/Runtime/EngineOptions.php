@@ -30,5 +30,9 @@ final class EngineOptions
         public readonly string $pollBackoffMax = '1 hour',
         /** Signs task tokens handed to external parties. */
         public readonly string $secret = 'change-me',
+        /** An event or a due effect waiting longer than this is reported stale (the workers stand). */
+        public readonly string $staleAfter = '5 minutes',
+        /** An effect whose outcome is unknown for longer than this is reported. */
+        public readonly string $unknownAfter = '15 minutes',
     ) {}
 }

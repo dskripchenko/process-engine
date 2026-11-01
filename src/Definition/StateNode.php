@@ -34,6 +34,7 @@ final class StateNode
      * @param  list<array{events: list<string>, by: string}>  $correlate
      * @param  array<string, mixed>  $meta
      * @param  array<string, mixed>|null  $output
+     * @param  int|string|null  $quorum  a parallel state's `join: quorum`: the number, or the method that gives it
      */
     public function __construct(
         public readonly string $id,
@@ -52,6 +53,7 @@ final class StateNode
         public readonly ?string $history,
         public readonly ?string $historyDefault,
         public readonly ?array $output,
+        public readonly int|string|null $quorum = null,
     ) {}
 
     public function isAtomic(): bool

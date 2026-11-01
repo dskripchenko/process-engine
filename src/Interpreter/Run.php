@@ -10,9 +10,11 @@ use Dskripchenko\ProcessEngine\Definition\Definition;
 use Dskripchenko\ProcessEngine\Definition\DefinitionError;
 use Dskripchenko\ProcessEngine\Definition\StateNode;
 use Dskripchenko\ProcessEngine\Definition\Transition;
+use Dskripchenko\ProcessEngine\Effect\Compensable;
 use Dskripchenko\ProcessEngine\Event;
 use Dskripchenko\ProcessEngine\Support\Duration;
 use Dskripchenko\ProcessEngine\Support\Hydrator;
+use RuntimeException;
 
 /**
  * The mutable state of one interpretation: kept apart from the Interpreter so
@@ -24,6 +26,9 @@ final class Run
 {
     /** @var array<string, true> */
     public array $active = [];
+
+    /** The event was a result that came after its invocation's quorum: an orphan. */
+    public bool $lateResult = false;
 
     /** @var list<Command> */
     public array $commands = [];
@@ -136,8 +141,31 @@ final class Run
         }
         $key = $this->activationKey($owner).'/'.$invokeId;
         $entry = $this->snapshot->invocations[$key] ?? ['total' => 0, 'outputs' => []];
+        if (($entry['closed'] ?? false) === true) {
+            // The quorum was reached before: a later element changes nothing (and is an orphan).
+            $this->lateResult = true;
+
+            return null;
+        }
         $index = (int) ($event->payload['index'] ?? 0);
         $entry['outputs'][(string) $index] = $event->payload['output'] ?? null;
+        if (isset($entry['quorum'])) {
+            if (count($entry['outputs']) < (int) $entry['quorum']) {
+                $this->snapshot->invocations[$key] = $entry;
+
+                return null;
+            }
+            // Kept, closed: the elements still running must not complete it again.
+            $outputs = $entry['outputs'];
+            ksort($outputs, SORT_NUMERIC);
+            $this->snapshot->invocations[$key] = ['total' => $entry['total'], 'outputs' => [], 'quorum' => $entry['quorum'], 'failed' => $entry['failed'], 'closed' => true];
+
+            return new Event('done.invoke.'.$invokeId, [
+                'activation' => $event->payload['activation'] ?? null,
+                'output' => array_values($outputs),
+                'indexes' => array_map('intval', array_keys($outputs)),
+            ]);
+        }
         if (count($entry['outputs']) < (int) $entry['total']) {
             $this->snapshot->invocations[$key] = $entry;
 
@@ -151,6 +179,78 @@ final class Run
             'activation' => $event->payload['activation'] ?? null,
             'output' => array_values($outputs),
         ]);
+    }
+
+    /**
+     * A failed element of a forEach invocation with a quorum: counted, and
+     * only when the quorum can no longer be reached does the invocation fail
+     * — `error.invoke` with the code `quorum_unreachable`. Null: absorbed.
+     * Any other event passes as it is.
+     */
+    public function collectFailure(Event $event): ?Event
+    {
+        if (! str_starts_with($event->name, 'error.invoke.')) {
+            return $event;
+        }
+        $invokeId = substr($event->name, strlen('error.invoke.'));
+        $owner = $this->definition->invokeOwner($invokeId);
+        if ($owner === null) {
+            return $event;
+        }
+        $key = $this->activationKey($owner).'/'.$invokeId;
+        $entry = $this->snapshot->invocations[$key] ?? null;
+        if (! is_array($entry) || ! isset($entry['quorum'])) {
+            return $event;
+        }
+        if (($entry['closed'] ?? false) === true) {
+            return null;
+        }
+        $entry['failed'] = (int) ($entry['failed'] ?? 0) + 1;
+        $done = count((array) $entry['outputs']);
+        if ((int) $entry['total'] - $entry['failed'] >= (int) $entry['quorum']) {
+            $this->snapshot->invocations[$key] = $entry;
+
+            return null;
+        }
+        $entry['closed'] = true;
+        $entry['outputs'] = [];
+        $this->snapshot->invocations[$key] = $entry;
+
+        return new Event($event->name, [
+            'activation' => $event->payload['activation'] ?? null,
+            'code' => 'quorum_unreachable',
+            'message' => "The quorum of {$entry['quorum']} can no longer be reached: {$done} done, {$entry['failed']} failed of {$entry['total']}",
+            'needed' => (int) $entry['quorum'],
+            'done' => $done,
+            'failed' => $entry['failed'],
+            'last' => ['code' => $event->payload['code'] ?? null, 'message' => $event->payload['message'] ?? null],
+        ]);
+    }
+
+    /**
+     * Whether a late result of this effect is undone: the policy says so and
+     * the effect can be (a process-wide policy passes over those that cannot).
+     *
+     * @param  array<string, mixed>  $invoke
+     */
+    private static function undoesOrphans(Definition $definition, array $invoke): bool
+    {
+        return $definition->orphanPolicy($invoke) === 'compensate'
+            && is_subclass_of((string) ($invoke['effect'] ?? ''), Compensable::class);
+    }
+
+    /**
+     * The number of a quorum: as written, or from the process's method; it
+     * must be between 1 and the number of branches.
+     */
+    private function quorumOf(int|string|null $quorum, int $branches, string $state): int
+    {
+        $n = is_string($quorum) ? $this->call($quorum, null) : $quorum;
+        if (! is_int($n) || $n < 1 || $n > $branches) {
+            throw new RuntimeException("The quorum of `{$state}` is ".var_export($n, true).", not a number from 1 to {$branches}");
+        }
+
+        return $n;
     }
 
     /**
@@ -401,7 +501,7 @@ final class Run
                 unset($this->snapshot->invocations[$key]);
             }
         }
-        unset($this->active[$node->id], $this->snapshot->entered[$node->id]);
+        unset($this->active[$node->id], $this->snapshot->entered[$node->id], $this->snapshot->flags['quorum.'.$node->id]);
         $this->exited[] = $node->id;
         $this->syncCtx();
     }
@@ -446,6 +546,9 @@ final class Run
             if ($this->runEntryActions) {
                 $this->runActions($node->entry, null, $node->id.'.entry');
             }
+            if ($node->isParallel() && $node->join === 'quorum') {
+                $this->snapshot->flags['quorum.'.$node->id] = $this->quorumOf($node->quorum, count($node->stateChildren()), $node->id);
+            }
             $this->startActivities($node);
 
             if ($node->isFinal()) {
@@ -478,6 +581,16 @@ final class Run
         if ($grand !== null && $grand->isParallel()) {
             if ($grand->join === 'any') {
                 $this->queue[] = new Event('done.state.'.$grand->id, ['output' => [$parent->id => $output], 'region' => $parent->id]);
+            } elseif ($grand->join === 'quorum') {
+                // Fired once, when the n-th region gets there; the rest are left by the transition that follows.
+                $done = array_values(array_filter($grand->stateChildren(), fn (StateNode $r) => $this->inFinal($r)));
+                if (count($done) === (int) ($this->snapshot->flags['quorum.'.$grand->id] ?? 0)) {
+                    $outputs = [];
+                    foreach ($done as $region) {
+                        $outputs[$region->id] = $this->regionOutput($region);
+                    }
+                    $this->queue[] = new Event('done.state.'.$grand->id, ['output' => $outputs, 'regions' => array_keys($outputs)]);
+                }
             } elseif (array_filter($grand->stateChildren(), fn (StateNode $r) => ! $this->inFinal($r)) === []) {
                 $outputs = [];
                 foreach ($grand->stateChildren() as $region) {
@@ -769,6 +882,10 @@ final class Run
                 return;
             }
             $this->snapshot->invocations[$invokeKey] = ['total' => count($items), 'outputs' => []];
+            if (isset($invoke['join'])) {
+                $q = Definition::quorumOf($invoke['join']);
+                $this->snapshot->invocations[$invokeKey] += ['quorum' => $this->quorumOf($q, count($items), $node->id), 'failed' => 0, 'closed' => false];
+            }
             foreach ($items as $index => $item) {
                 $this->dispatchInvoke($invoke, $invokeKey.'#'.$index, $activation, $item, $index, $node);
             }
@@ -820,7 +937,7 @@ final class Run
                 'item' => $index !== null,
                 'index' => $index,
                 'onScopeExit' => 'cancel',
-            ]);
+            ] + ($this->definition->orphanPolicy($invoke) === 'compensate' ? ['onOrphan' => 'compensate'] : []));
 
             return;
         }
@@ -840,7 +957,7 @@ final class Run
             'concurrency' => $invoke['concurrency'] ?? null,
             'state' => $node->id,
             'scopes' => $this->scopes(),
-        ]);
+        ] + (self::undoesOrphans($this->definition, $invoke) ? ['onOrphan' => 'compensate'] : []));
     }
 
     // Actions -----------------------------------------------------------------

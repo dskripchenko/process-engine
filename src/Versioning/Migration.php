@@ -36,6 +36,8 @@ final class Migration
 
     private ?int $target = null;
 
+    private bool $preserveTimers = false;
+
     private function __construct(public readonly string $process, public readonly int $source) {}
 
     /**
@@ -53,6 +55,24 @@ final class Migration
         $this->target = $version;
 
         return $this;
+    }
+
+    /**
+     * Timers keep their deadlines (ADR-017): a timer of the new version takes
+     * the deadline of the old one at the same place — the mapped state, the
+     * same position among its timers. Without it timers count from the
+     * migration. A deadline already past fires at the next tick.
+     */
+    public function preserveTimers(bool $preserve = true): self
+    {
+        $this->preserveTimers = $preserve;
+
+        return $this;
+    }
+
+    public function preservesTimers(): bool
+    {
+        return $this->preserveTimers;
     }
 
     public function mapState(string|BackedEnum $from, string|BackedEnum $to): self

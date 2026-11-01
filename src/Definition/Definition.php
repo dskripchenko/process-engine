@@ -17,7 +17,7 @@ use Dskripchenko\ProcessEngine\Support\Json;
  *     node = {id, type, initial?, states?: [node], entry?: [action], exit?: [action],
  *             on?: [transition], always?: [transition], timers?: [timer], invoke?: [invoke],
  *             polls?: [poll], defer?: [event], correlate?: [{events, by}], meta?: {},
- *             join?: all|any, history?: shallow|deep, default?: id, output?: value}
+ *             join?: all|any|{quorum: n|{method}}, history?: shallow|deep, default?: id, output?: value}
  *     transition = {event?, guard?, actions?: [action], target?: id, label?}
  *     action = {type: method|effect|assign|raise|spawn|compensate|log, ...}
  *     guard = {type: method, name} | {type: predicate, expr}
@@ -96,6 +96,47 @@ final class Definition
     public function toJson(): string
     {
         return Json::encode($this->data);
+    }
+
+    /**
+     * `all`, `any` or `quorum` (with its number or method in the node's `quorum`).
+     */
+    private static function join(mixed $join): string
+    {
+        if (is_array($join) && array_key_exists('quorum', $join)) {
+            return 'quorum';
+        }
+
+        return $join === 'any' ? 'any' : 'all';
+    }
+
+    /**
+     * The number of `{quorum: n}`, or the method of `{quorum: {method}}`.
+     */
+    public static function quorumOf(mixed $join): int|string|null
+    {
+        if (! is_array($join) || ! array_key_exists('quorum', $join)) {
+            return null;
+        }
+        $q = $join['quorum'];
+        if (is_array($q) && isset($q['method']) && is_string($q['method'])) {
+            return $q['method'];
+        }
+
+        return is_int($q) ? $q : null;
+    }
+
+    /**
+     * What becomes of an invocation's late result (ADR-017): the invoke's own
+     * `onOrphan`, else the process's, else `log`.
+     *
+     * @param  array<string, mixed>  $invoke
+     */
+    public function orphanPolicy(array $invoke): string
+    {
+        $policy = $invoke['onOrphan'] ?? ($this->data['root']['onOrphan'] ?? null);
+
+        return $policy === 'compensate' ? 'compensate' : 'log';
     }
 
     public function name(): string
@@ -232,10 +273,11 @@ final class Definition
             defer: array_values(array_map('strval', is_array($data['defer'] ?? null) ? $data['defer'] : [])),
             correlate: self::correlations($data['correlate'] ?? []),
             meta: is_array($data['meta'] ?? null) ? $data['meta'] : [],
-            join: ($data['join'] ?? 'all') === 'any' ? 'any' : 'all',
+            join: self::join($data['join'] ?? 'all'),
             history: isset($data['history']) && is_string($data['history']) ? $data['history'] : null,
             historyDefault: isset($data['default']) && is_string($data['default']) ? $data['default'] : null,
             output: isset($data['output']) && is_array($data['output']) ? $data['output'] : null,
+            quorum: self::quorumOf($data['join'] ?? null),
         );
         $node->order = $order++;
         $node->depth = $depth;

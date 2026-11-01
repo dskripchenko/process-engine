@@ -36,6 +36,10 @@ $p->parallel('agreement', fn (Builder $s) => $s
 - `join: 'all'`（默认）：所有区域都到达终态时完成；`done` 事件携带每个区域的输出。
 - `join: 'any'`：第一个区域结束时完成；其他区域被退出，其待处理的副作用和子流程
   被取消。
+- `join: quorum(2)`：两个区域结束时完成——三个审批中的两个；其余区域像 `any`
+  一样被退出。数量可以来自方法（`quorum($this->majority(...))`），在进入状态时读取；
+  它必须介于 1 和区域数量之间。`done` 事件携带已结束区域的输出，并在 `regions`
+  中给出它们的 id。
 - 区域在逻辑上并行、在物理上顺序执行（每个实例一个租约）；它们的副作用则真正并行
   运行。
 
@@ -79,6 +83,15 @@ $p->state('paused', fn (Builder $s) => $s->on('continue', to: 'resume'));
 ```
 
 N 个子流程，结果按列表顺序收集，全部完成时即完成。
+
+使用 `join: quorum(n)` 时，只要 `n` 个元素成功，调用即完成——它们的输出按列表顺序，
+位置在 `indexes` 中。失败的元素会被计数；只有当法定数量已无法达到时调用才失败，
+即 `error.invoke`，代码为 `quorum_unreachable`（`needed`、`done`、`failed`）。
+达到法定数量之后到达的结果不会改变任何东西。
+
+```php
+->invoke(Approve::class, forEach: 'approvers', join: quorum($this->majority(...)), onDone: 'approved', onError: 'rejected')
+```
 
 ### 每个事件一个子流程：`spawn`
 
